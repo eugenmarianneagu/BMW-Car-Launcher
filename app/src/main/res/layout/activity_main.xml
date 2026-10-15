@@ -1,0 +1,921 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_dashboard_leather"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:paddingStart="6dp"
+    android:paddingEnd="6dp"
+    android:paddingTop="2dp"
+    android:paddingBottom="2dp">
+
+    <!-- ============================================================== -->
+    <!-- 1. TOP ARC BAR: WIFI, LINK, BT, CLOCK WITH -/+, GLOBE, TEMP     -->
+    <!-- ============================================================== -->
+    <RelativeLayout
+        android:id="@+id/top_bar"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:layout_alignParentTop="true"
+        android:gravity="center_vertical"
+        android:paddingStart="40dp"
+        android:paddingEnd="40dp">
+
+        <!-- Top Left: WiFi, Anchor NO, Bluetooth (BMW Amber) -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_alignParentStart="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/top_wifi_icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ᯤ"
+                android:textColor="@color/bmw_amber"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/top_link_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="14dp"
+                android:text="⚓ NO"
+                android:textColor="@color/bmw_amber"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/top_bt_icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="14dp"
+                android:text="ᛒ"
+                android:textColor="@color/bmw_amber"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Top Center: Volume Down (-), Digital Clock, Volume Up (+) at SAME LEVEL -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_centerInParent="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/btn_vol_down"
+                android:layout_width="44dp"
+                android:layout_height="36dp"
+                android:gravity="center"
+                android:text="—"
+                android:textColor="@color/color_nav_btn_text"
+                android:background="@drawable/bg_nav_btn_focus"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:clickable="true"
+                android:focusable="true"
+                android:nextFocusLeft="@+id/btn_left_1"
+                android:nextFocusRight="@+id/btn_vol_up"
+                android:nextFocusDown="@+id/center_circle"
+                android:nextFocusUp="@+id/btn_vol_down" />
+
+            <TextView
+                android:id="@+id/text_clock"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="14dp"
+                android:layout_marginEnd="14dp"
+                android:text="1:37"
+                android:textColor="@color/bmw_white"
+                android:textSize="28sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btn_vol_up"
+                android:layout_width="44dp"
+                android:layout_height="36dp"
+                android:gravity="center"
+                android:text="+"
+                android:textColor="@color/color_nav_btn_text"
+                android:background="@drawable/bg_nav_btn_focus"
+                android:textSize="24sp"
+                android:textStyle="bold"
+                android:clickable="true"
+                android:focusable="true"
+                android:nextFocusLeft="@+id/btn_vol_down"
+                android:nextFocusRight="@+id/btn_right_1"
+                android:nextFocusDown="@+id/center_circle"
+                android:nextFocusUp="@+id/btn_vol_up" />
+        </LinearLayout>
+
+        <!-- Top Right: Globe & Moon + Temp (BMW Amber) -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_alignParentEnd="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/top_globe_icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🌐"
+                android:textColor="@color/bmw_amber"
+                android:textSize="17sp" />
+
+            <TextView
+                android:id="@+id/top_temp_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:text="🌙 +5°"
+                android:textColor="@color/bmw_amber"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </RelativeLayout>
+
+    <!-- ============================================================== -->
+    <!-- 2. BOTTOM ARC BAR: GPS COUNT, PLAYER WITH </>, BATTERY, SETTING -->
+    <!-- ============================================================== -->
+    <RelativeLayout
+        android:id="@+id/bottom_bar"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_alignParentBottom="true"
+        android:gravity="center_vertical"
+        android:paddingStart="40dp"
+        android:paddingEnd="40dp">
+
+        <!-- Bottom Left: GPS 22, OFF, Plus (BMW Amber) -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_alignParentStart="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/bottom_gps_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⌖ 22"
+                android:textColor="@color/bmw_amber"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/bottom_off_btn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="14dp"
+                android:text="⊝ OFF"
+                android:textColor="@color/bmw_amber"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <TextView
+                android:id="@+id/bottom_plus_btn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="14dp"
+                android:text="+"
+                android:textColor="@color/bmw_amber"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:clickable="true"
+                android:focusable="true" />
+        </LinearLayout>
+
+        <!-- Bottom Center: Prev (<), Track Info (Title & Artist), Next (>) at SAME LEVEL -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_centerInParent="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/btn_prev_track"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:gravity="center"
+                android:text="〈"
+                android:textColor="@color/color_nav_btn_text"
+                android:background="@drawable/bg_nav_btn_focus"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:clickable="true"
+                android:focusable="true"
+                android:nextFocusLeft="@+id/btn_left_3"
+                android:nextFocusRight="@+id/btn_play_pause"
+                android:nextFocusUp="@+id/center_circle"
+                android:nextFocusDown="@+id/btn_prev_track" />
+
+            <TextView
+                android:id="@+id/btn_play_pause"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="12dp"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:gravity="center"
+                android:text="PLAY / PAUSE"
+                android:textColor="@color/color_nav_btn_text"
+                android:background="@drawable/bg_nav_btn_focus"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.08"
+                android:clickable="true"
+                android:focusable="true"
+                android:nextFocusLeft="@+id/btn_prev_track"
+                android:nextFocusRight="@+id/btn_next_track"
+                android:nextFocusUp="@+id/center_circle"
+                android:nextFocusDown="@+id/btn_play_pause" />
+
+            <TextView
+                android:id="@+id/btn_next_track"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:gravity="center"
+                android:text="〉"
+                android:textColor="@color/color_nav_btn_text"
+                android:background="@drawable/bg_nav_btn_focus"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:clickable="true"
+                android:focusable="true"
+                android:nextFocusLeft="@+id/btn_play_pause"
+                android:nextFocusRight="@+id/btn_right_3"
+                android:nextFocusUp="@+id/center_circle"
+                android:nextFocusDown="@+id/btn_next_track" />
+        </LinearLayout>
+
+        <!-- Bottom Right: Battery, Night Mode, Settings (BMW Amber) -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_alignParentEnd="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/bottom_battery_icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⚡ 74%"
+                android:textColor="@color/bmw_amber"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btn_night_mode"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:layout_marginStart="12dp"
+                android:gravity="center"
+                android:text="🌙"
+                android:textColor="@color/bmw_amber"
+                android:background="@drawable/bg_nav_btn_focus"
+                android:textSize="18sp"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <TextView
+                android:id="@+id/btn_quick_settings"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:text="⚙"
+                android:textColor="@color/bmw_amber"
+                android:textSize="20sp"
+                android:clickable="true"
+                android:focusable="true" />
+        </LinearLayout>
+    </RelativeLayout>
+
+    <!-- ============================================================== -->
+    <!-- 3. MAIN CLUSTER: 3 BANDS LEFT, GAUGE RING CENTER, 3 BANDS RIGHT-->
+    <!-- ============================================================== -->
+    <RelativeLayout
+        android:id="@+id/content_row"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@id/top_bar"
+        android:layout_above="@id/bottom_bar"
+        android:clipChildren="false"
+        android:clipToPadding="false">
+
+        <!-- 3.1 HORIZONTAL COLUMNS (50% LEFT, 50% RIGHT) -->
+        <LinearLayout
+            android:id="@+id/columns_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:baselineAligned="false">
+
+            <!-- LEFT COLUMN: 3 BANDS SEGMENTATE MASIVE -->
+            <LinearLayout
+                android:id="@+id/left_column"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <!-- BAND L1: RADIO -->
+                <com.bmw.carlauncher.AgamaBandButton
+                    android:id="@+id/btn_left_1"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    app:isRightSide="false"
+                    app:bandPosition="0"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:nextFocusUp="@+id/btn_vol_down"
+                    android:nextFocusDown="@+id/btn_left_2"
+                    android:nextFocusLeft="@+id/btn_left_1"
+                    android:nextFocusRight="@+id/center_circle">
+
+                    <TextView
+                        android:id="@+id/label_left_1"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="start|center_vertical"
+                        android:layout_marginStart="36dp"
+                        android:text="RADIO"
+                        android:textColor="@color/bmw_white"
+                        android:textSize="17sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="0.06" />
+
+                    <View
+                        android:layout_width="90dp"
+                        android:layout_height="3.5dp"
+                        android:layout_gravity="start|center_vertical"
+                        android:layout_marginStart="36dp"
+                        android:layout_marginTop="20dp"
+                        android:background="@drawable/bg_amber_led_slot" />
+
+                    <ImageView
+                        android:id="@+id/icon_left_1"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:layout_gravity="start|center_vertical"
+                        android:layout_marginStart="140dp"
+                        android:src="@drawable/ic_gauge_radio"
+                        android:scaleType="fitCenter" />
+                </com.bmw.carlauncher.AgamaBandButton>
+
+                <!-- BAND L2: NAVI -->
+                <com.bmw.carlauncher.AgamaBandButton
+                    android:id="@+id/btn_left_2"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    app:isRightSide="false"
+                    app:bandPosition="1"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:nextFocusUp="@+id/btn_left_1"
+                    android:nextFocusDown="@+id/btn_left_3"
+                    android:nextFocusLeft="@+id/btn_left_2"
+                    android:nextFocusRight="@+id/center_circle">
+
+                    <TextView
+                        android:id="@+id/label_left_2"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="start|center_vertical"
+                        android:layout_marginStart="36dp"
+                        android:text="NAVI"
+                        android:textColor="@color/bmw_white"
+                        android:textSize="17sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="0.06" />
+
+                    <View
+                        android:layout_width="90dp"
+                        android:layout_height="3.5dp"
+                        android:layout_gravity="start|center_vertical"
+                        android:layout_marginStart="36dp"
+                        android:layout_marginTop="20dp"
+                        android:background="@drawable/bg_amber_led_slot" />
+
+                    <ImageView
+                        android:id="@+id/icon_left_2"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:layout_gravity="start|center_vertical"
+                        android:layout_marginStart="140dp"
+                        android:src="@drawable/ic_gauge_navi"
+                        android:scaleType="fitCenter" />
+                </com.bmw.carlauncher.AgamaBandButton>
+
+                <!-- BAND L3: MUSIC -->
+                <com.bmw.carlauncher.AgamaBandButton
+                    android:id="@+id/btn_left_3"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    app:isRightSide="false"
+                    app:bandPosition="2"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:nextFocusUp="@+id/btn_left_2"
+                    android:nextFocusDown="@+id/btn_prev_track"
+                    android:nextFocusLeft="@+id/btn_left_3"
+                    android:nextFocusRight="@+id/center_circle">
+
+                    <TextView
+                        android:id="@+id/label_left_3"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="start|center_vertical"
+                        android:layout_marginStart="36dp"
+                        android:text="MUSIC"
+                        android:textColor="@color/bmw_white"
+                        android:textSize="17sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="0.06" />
+
+                    <View
+                        android:layout_width="90dp"
+                        android:layout_height="3.5dp"
+                        android:layout_gravity="start|center_vertical"
+                        android:layout_marginStart="36dp"
+                        android:layout_marginTop="20dp"
+                        android:background="@drawable/bg_amber_led_slot" />
+
+                    <ImageView
+                        android:id="@+id/icon_left_3"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:layout_gravity="start|center_vertical"
+                        android:layout_marginStart="140dp"
+                        android:src="@drawable/ic_gauge_music"
+                        android:scaleType="fitCenter" />
+                </com.bmw.carlauncher.AgamaBandButton>
+            </LinearLayout>
+
+            <!-- RIGHT COLUMN: 3 BANDS SEGMENTATE MASIVE -->
+            <LinearLayout
+                android:id="@+id/right_column"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <!-- BAND R1: PHONE -->
+                <com.bmw.carlauncher.AgamaBandButton
+                    android:id="@+id/btn_right_1"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    app:isRightSide="true"
+                    app:bandPosition="0"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:nextFocusUp="@+id/btn_vol_up"
+                    android:nextFocusDown="@+id/btn_right_2"
+                    android:nextFocusLeft="@+id/center_circle"
+                    android:nextFocusRight="@+id/btn_right_1">
+
+                    <ImageView
+                        android:id="@+id/icon_right_1"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:layout_gravity="end|center_vertical"
+                        android:layout_marginEnd="140dp"
+                        android:src="@drawable/ic_gauge_phone"
+                        android:scaleType="fitCenter" />
+
+                    <View
+                        android:layout_width="90dp"
+                        android:layout_height="3.5dp"
+                        android:layout_gravity="end|center_vertical"
+                        android:layout_marginEnd="36dp"
+                        android:layout_marginTop="20dp"
+                        android:background="@drawable/bg_amber_led_slot" />
+
+                    <TextView
+                        android:id="@+id/label_right_1"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="end|center_vertical"
+                        android:layout_marginEnd="36dp"
+                        android:text="PHONE"
+                        android:textColor="@color/bmw_white"
+                        android:textSize="17sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="0.06" />
+                </com.bmw.carlauncher.AgamaBandButton>
+
+                <!-- BAND R2: INTERNET -->
+                <com.bmw.carlauncher.AgamaBandButton
+                    android:id="@+id/btn_right_2"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    app:isRightSide="true"
+                    app:bandPosition="1"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:nextFocusUp="@+id/btn_right_1"
+                    android:nextFocusDown="@+id/btn_right_3"
+                    android:nextFocusLeft="@+id/center_circle"
+                    android:nextFocusRight="@+id/btn_right_2">
+
+                    <ImageView
+                        android:id="@+id/icon_right_2"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:layout_gravity="end|center_vertical"
+                        android:layout_marginEnd="140dp"
+                        android:src="@drawable/ic_gauge_globe"
+                        android:scaleType="fitCenter" />
+
+                    <View
+                        android:layout_width="90dp"
+                        android:layout_height="3.5dp"
+                        android:layout_gravity="end|center_vertical"
+                        android:layout_marginEnd="36dp"
+                        android:layout_marginTop="20dp"
+                        android:background="@drawable/bg_amber_led_slot" />
+
+                    <TextView
+                        android:id="@+id/label_right_2"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="end|center_vertical"
+                        android:layout_marginEnd="36dp"
+                        android:text="INTERNET"
+                        android:textColor="@color/bmw_white"
+                        android:textSize="17sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="0.06" />
+                </com.bmw.carlauncher.AgamaBandButton>
+
+                <!-- BAND R3: APPS -->
+                <com.bmw.carlauncher.AgamaBandButton
+                    android:id="@+id/btn_right_3"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    app:isRightSide="true"
+                    app:bandPosition="2"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:nextFocusUp="@+id/btn_right_2"
+                    android:nextFocusDown="@+id/btn_next_track"
+                    android:nextFocusLeft="@+id/center_circle"
+                    android:nextFocusRight="@+id/btn_right_3">
+
+                    <ImageView
+                        android:id="@+id/icon_right_3"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:layout_gravity="end|center_vertical"
+                        android:layout_marginEnd="140dp"
+                        android:src="@drawable/ic_gauge_apps"
+                        android:scaleType="fitCenter" />
+
+                    <View
+                        android:layout_width="90dp"
+                        android:layout_height="3.5dp"
+                        android:layout_gravity="end|center_vertical"
+                        android:layout_marginEnd="36dp"
+                        android:layout_marginTop="20dp"
+                        android:background="@drawable/bg_amber_led_slot" />
+
+                    <TextView
+                        android:id="@+id/label_right_3"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="end|center_vertical"
+                        android:layout_marginEnd="36dp"
+                        android:text="APPS"
+                        android:textColor="@color/bmw_white"
+                        android:textSize="17sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="0.06" />
+                </com.bmw.carlauncher.AgamaBandButton>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 3.2 CENTER DIAL: SOLID CHROME 3D BEZEL WITH FULL BMW BADGE / MODES -->
+        <FrameLayout
+            android:id="@+id/center_wrapper"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_centerInParent="true"
+            android:clipChildren="false">
+
+            <!-- Central Bezel & Display Core (Centered, fills circle) -->
+            <FrameLayout
+                android:id="@+id/center_circle"
+                android:layout_width="230dp"
+                android:layout_height="230dp"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_center_circle_selector"
+                android:clickable="true"
+                android:focusable="true"
+                android:nextFocusUp="@+id/btn_vol_down"
+                android:nextFocusDown="@+id/btn_play_pause"
+                android:nextFocusLeft="@+id/btn_left_2"
+                android:nextFocusRight="@+id/btn_right_2">
+
+                <!-- Inner Core Content Container (Fills circle completely right to bezel) -->
+                <FrameLayout
+                    android:id="@+id/center_core_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_margin="7dp">
+
+                    <!-- 0. VIZUALIZARE SIGLĂ OFICIALĂ 3D BMW (UMPLE TOT CERCUL) -->
+                    <FrameLayout
+                        android:id="@+id/view_center_bmw"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:visibility="visible">
+
+                        <ImageView
+                            android:id="@+id/center_bmw_badge"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:layout_gravity="center"
+                            android:src="@drawable/bmw_logo"
+                            android:scaleType="fitCenter" />
+                    </FrameLayout>
+
+                    <!-- 1. VIZUALIZARE RADIO -->
+                    <LinearLayout
+                        android:id="@+id/view_center_radio"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <ImageView
+                            android:id="@+id/center_radio_art"
+                            android:layout_width="56dp"
+                            android:layout_height="56dp"
+                            android:scaleType="centerCrop"
+                            android:layout_marginBottom="4dp" />
+
+                        <TextView
+                            android:id="@+id/center_radio_title"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="BMW RADIO"
+                            android:textColor="@color/bmw_white"
+                            android:textSize="15sp"
+                            android:textStyle="bold"
+                            android:letterSpacing="0.06"
+                            android:maxLines="1" />
+
+                        <TextView
+                            android:id="@+id/center_radio_sub"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Classic Rock"
+                            android:textColor="@color/bmw_amber"
+                            android:textSize="11sp"
+                            android:maxLines="1" />
+
+                        <TextView
+                            android:id="@+id/center_radio_status"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="▶ PLAYING"
+                            android:textColor="@color/bmw_amber_light"
+                            android:textSize="10sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <!-- 2. VIZUALIZARE WAZE DIRECTIONS -->
+                    <LinearLayout
+                        android:id="@+id/view_center_waze"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:id="@+id/center_waze_icon"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="↱"
+                            android:textColor="@color/bmw_amber"
+                            android:textSize="38sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/center_waze_distance"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="350 m"
+                            android:textColor="@color/bmw_white"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/center_waze_road"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Bulevardul Unirii"
+                            android:textColor="@color/bmw_amber_light"
+                            android:textSize="11sp"
+                            android:maxLines="1" />
+
+                        <TextView
+                            android:id="@+id/center_waze_eta"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="ETA: 14:25 • 4.2 km"
+                            android:textColor="@color/bmw_gray_text"
+                            android:textSize="10sp" />
+                    </LinearLayout>
+
+                    <!-- 3. VIZUALIZARE VITEZOMETRU GPS -->
+                    <LinearLayout
+                        android:id="@+id/view_center_speedo"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:id="@+id/center_speed_value"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textColor="@color/bmw_amber"
+                            android:textSize="46sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/center_speed_unit"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="KM/H"
+                            android:textColor="@color/bmw_white"
+                            android:textSize="12sp"
+                            android:textStyle="bold"
+                            android:letterSpacing="0.1" />
+
+                        <TextView
+                            android:id="@+id/center_speed_sub"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="GPS READY"
+                            android:textColor="@color/bmw_gray_text"
+                            android:textSize="9sp" />
+                    </LinearLayout>
+
+                    <!-- 4. VIZUALIZARE YOUTUBE MUSIC / VIDEO PLAYER EXTERIOR -->
+                    <FrameLayout
+                        android:id="@+id/view_center_media"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/bg_circle_clip"
+                        android:clipToOutline="true"
+                        android:visibility="gone">
+
+                        <ImageView
+                            android:id="@+id/center_media_thumbnail"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:scaleType="centerCrop" />
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="@drawable/bg_media_overlay_scrim" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:padding="16dp">
+
+                            <TextView
+                                android:id="@+id/center_media_source"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="▶ YOUTUBE MUSIC"
+                                android:textColor="@color/bmw_amber"
+                                android:textSize="11sp"
+                                android:textStyle="bold"
+                                android:letterSpacing="0.08" />
+
+                            <TextView
+                                android:id="@+id/center_media_title"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:gravity="center"
+                                android:text="YouTube Music"
+                                android:textColor="@color/bmw_white"
+                                android:textSize="14sp"
+                                android:textStyle="bold"
+                                android:maxLines="2"
+                                android:ellipsize="end" />
+
+                            <TextView
+                                android:id="@+id/center_media_artist"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:gravity="center"
+                                android:text="Redare activă"
+                                android:textColor="@color/bmw_amber_light"
+                                android:textSize="12sp"
+                                android:maxLines="1"
+                                android:ellipsize="end" />
+                        </LinearLayout>
+                    </FrameLayout>
+
+                    <!-- 5. VIZUALIZARE HARTĂ GPS CIRCULARĂ LIVE (OSMDROID DARK MODE) -->
+                    <FrameLayout
+                        android:id="@+id/view_center_map"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/bg_circle_clip"
+                        android:clipToOutline="true"
+                        android:visibility="gone">
+
+                        <org.osmdroid.views.MapView
+                            android:id="@+id/center_map_view"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent" />
+
+                        <!-- Vignette shadow around circular edge for depth -->
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="@drawable/bg_map_vignette" />
+
+                        <!-- Top badge: KM/H speed -->
+                        <LinearLayout
+                            android:id="@+id/map_speed_badge"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="top|center_horizontal"
+                            android:layout_marginTop="16dp"
+                            android:orientation="horizontal"
+                            android:gravity="center"
+                            android:paddingStart="10dp"
+                            android:paddingEnd="10dp"
+                            android:paddingTop="3dp"
+                            android:paddingBottom="3dp"
+                            android:background="@drawable/bg_speed_badge">
+
+                            <TextView
+                                android:id="@+id/map_speed_text"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="0"
+                                android:textColor="@color/bmw_amber"
+                                android:textSize="14sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="3dp"
+                                android:text="km/h"
+                                android:textColor="@color/bmw_white"
+                                android:textSize="10sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+                    </FrameLayout>
+                </FrameLayout>
+            </FrameLayout>
+        </FrameLayout>
+    </RelativeLayout>
+
+</RelativeLayout>
+
