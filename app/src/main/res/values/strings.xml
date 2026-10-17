@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BMW Car Launcher</string>
+    <string name="accessibility_service_description">Permite tastelor trimise de ESP32 (de pe volan sau iDrive) sa readuca aplicatia BMW Car Launcher pe ecran din orice alta aplicatie.</string>
+</resources>

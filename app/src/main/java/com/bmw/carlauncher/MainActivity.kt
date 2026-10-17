@@ -473,6 +473,13 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent(Settings.ACTION_SETTINGS))
             } catch (_: Exception) {}
         }
+        btnQuickSettings.setOnLongClickListener {
+            try {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                Toast.makeText(this, "Setari Accesibilitate -> Activati 'BMW Car Launcher'", Toast.LENGTH_LONG).show()
+            } catch (_: Exception) {}
+            true
+        }
 
         // Clic / Enter pe Cercul Central -> comuta afisajul (BMW -> Media -> Radio -> Map -> Waze -> Speedometer)
         centerCircle.setOnClickListener {
@@ -847,6 +854,9 @@ class MainActivity : AppCompatActivity() {
             }
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                 btnPlayPause.performClick()
+                return true
+            }
+            KeyEvent.KEYCODE_F12, KeyEvent.KEYCODE_F11 -> {
                 return true
             }
         }
