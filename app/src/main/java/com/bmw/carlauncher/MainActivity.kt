@@ -316,7 +316,8 @@ class MainActivity : AppCompatActivity() {
             mapSpeedText.text = "$speedInt"
 
             // Actualizare camera 3D MapLibre cand este activa urmarirea GPS
-            updateMapLibreCamera(location, speedKmh)
+            val isInitialZoomNeeded = (mapLibreMap?.cameraPosition?.zoom ?: 0.0) < 5.0
+            updateMapLibreCamera(location, speedKmh, force = isInitialZoomNeeded)
         }
         override fun onProviderEnabled(provider: String) {
             centerSpeedSub.text = "GPS CONECTAT"
@@ -682,7 +683,11 @@ class MainActivity : AppCompatActivity() {
             .tilt(targetTilt)
             .build()
 
-        map.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition), 1000)
+        if (map.cameraPosition.zoom < 5.0) {
+            map.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition), 1500)
+        } else {
+            map.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition), 1000)
+        }
     }
 
     @Suppress("SetJavaScriptEnabled")
@@ -1494,7 +1499,9 @@ class MainActivity : AppCompatActivity() {
         if (currentMode == CenterMode.MAP) {
             isMapTrackingGps = true
             btnMapRecenter.visibility = View.GONE
-            lastKnownLocation?.let { loc ->
+            val loc = lastKnownLocation ?: getBestLastKnownLocation()
+            if (loc != null) {
+                lastKnownLocation = loc
                 val speedKmh = if (loc.hasSpeed()) loc.speed * 3.6f else 0f
                 updateMapLibreCamera(loc, speedKmh, force = true)
             }
@@ -2009,6 +2016,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun getBestLastKnownLocation(): Location? {
+        val lm = locationManager ?: (getSystemService(Context.LOCATION_SERVICE) as? LocationManager) ?: return null
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return null
+        }
+        var bestLocation: Location? = null
+        try {
+            val providers = lm.getProviders(true)
+            for (provider in providers) {
+                val l = lm.getLastKnownLocation(provider) ?: continue
+                if (bestLocation == null || l.time > bestLocation.time) {
+                    bestLocation = l
+                }
+            }
+        } catch (_: Exception) {}
+        return bestLocation
+    }
+
     private fun startGpsUpdates() {
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(
@@ -2022,13 +2047,21 @@ class MainActivity : AppCompatActivity() {
         try {
             locationManager = getSystemService(Context.LOCATION_SERVICE) as? LocationManager
             locationManager?.let { lm ->
-                val isGpsEnabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
-                if (isGpsEnabled) {
-                    lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500L, 0f, locationListener)
-                    centerSpeedSub.text = "CAUTARE SEMNAL GPS..."
-                } else {
-                    centerSpeedSub.text = "ACTIVATI GPS DIN SETARI"
+                // Preluam instantaneu ultima locatie din cache-ul sistemului pentru a avea zoom imediat la pornire
+                val initialLoc = getBestLastKnownLocation()
+                if (initialLoc != null) {
+                    lastKnownLocation = initialLoc
+                    val speedKmh = if (initialLoc.hasSpeed()) initialLoc.speed * 3.6f else 0f
+                    updateMapLibreCamera(initialLoc, speedKmh, force = true)
                 }
+
+                if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                    lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500L, 0f, locationListener)
+                }
+                if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                    lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 1000L, 0f, locationListener)
+                }
+                centerSpeedSub.text = if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) "CAUTARE SEMNAL GPS..." else "ACTIVATI GPS DIN SETARI"
             }
         } catch (e: Exception) {
             centerSpeedSub.text = "EROARE GPS"
@@ -2273,6 +2306,19 @@ class MainActivity : AppCompatActivity() {
 
         map.setStyle(styleUrl) { style ->
             enableLocationComponent(style)
+            val loc = lastKnownLocation ?: getBestLastKnownLocation()
+            if (loc != null) {
+                lastKnownLocation = loc
+                val speedKmh = if (loc.hasSpeed()) loc.speed * 3.6f else 0f
+                updateMapLibreCamera(loc, speedKmh, force = true)
+            } else {
+                val defaultPos = CameraPosition.Builder()
+                    .target(LatLng(45.0608, 25.2606))
+                    .zoom(16.5)
+                    .tilt(35.0)
+                    .build()
+                map.cameraPosition = defaultPos
+            }
         }
     }
 
