@@ -1,9 +1,16 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="22dp"
-    android:height="22dp"
-    android:viewportWidth="512"
-    android:viewportHeight="512">
+    android:width="20dp"
+    android:height="20dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Pin outline matching GPS icon from design kit -->
     <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M502.61,310.04 l-96.7,96.72 a31.88,31.88 0 0 1 -45.01,0 L280.57,326.34 l-9.89,9.91 a190.56,190.56 0 0 1 -5.41,168.52 c-4.5,8.5 -16.39,9.6 -23.21,2.8 L134.55,400.05 l-17.8,17.8 c0.7,2.61 1.61,5 1.61,7.8 a32.01,32.01 0 1 1 -32.01,-32 c2.8,0 5.2,0.91 7.8,1.61 l17.8,-17.8 L35.22,314.95 c-6.8,-6.81 -5.7,-18.71 2.8,-23.21 a190.56,190.56 0 0 1 168.52,-5.41 l9.91,-9.89 L325.66,231.94 a31.88,31.88 0 0 1 0,-45.01 l96.72,-96.7 c37.5,-37.5 98.31,-37.5 135.81,0 s37.5,98.31 0,135.81 z m-207.31,-88.71 l-89.91,89.91 -50.61,-50.61 89.91,-89.91 c12.5,-12.5 32.81,-12.5 45.31,0 s12.5,32.81 0,45.31 z"/>
+        android:fillColor="@color/bmw_white"
+        android:pathData="M12,2C8.13,2 5,5.13 5,9c0,5.25 7,13 7,13s7,-7.75 7,-13c0,-3.87 -3.13,-7 -7,-7zM7,9c0,-2.76 2.24,-5 5,-5s5,2.24 5,5c0,2.88 -2.88,7.19 -5,9.88C9.92,16.21 7,11.85 7,9z"/>
+
+    <!-- Inner central dot -->
+    <path
+        android:fillColor="@color/bmw_white"
+        android:pathData="M12,9m-2.5,0a2.5,2.5 0,1 1,5 0a2.5,2.5 0,1 1,-5 0"/>
 </vector>
