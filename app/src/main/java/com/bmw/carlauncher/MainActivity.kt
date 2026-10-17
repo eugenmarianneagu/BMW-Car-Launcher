@@ -345,7 +345,7 @@ class MainActivity : AppCompatActivity() {
             }
             lastGnssUsed = used
             if (::tvSatelliteCount.isInitialized) {
-                tvSatelliteCount.text = "$lastGnssTotal"
+                tvSatelliteCount.text = "$lastGnssTotal ($lastGnssUsed)"
             }
         }
 
@@ -354,7 +354,7 @@ class MainActivity : AppCompatActivity() {
             lastGnssTotal = 0
             lastGnssUsed = 0
             if (::tvSatelliteCount.isInitialized) {
-                tvSatelliteCount.text = "0"
+                tvSatelliteCount.text = "0 (0)"
             }
         }
     }
