@@ -1,0 +1,22 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Satellite Body & Solar Wings -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M19,7h-2.17l-1,-1H14V4h-4v2H8.17l-1,1H5C3.9,7 3,7.9 3,9v6c0,1.1 0.9,2 2,2h2.17l1,1H10v2h4v-2h1.83l1,-1H19c1.1,0 2,-0.9 2,-2V9C21,7.9 20.1,7 19,7zM19,15h-2.59l-1,1H8.59l-1,-1H5V9h2.59l1,-1h6.82l1,1H19V15z"/>
+    <!-- Solar grid inner lines -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M9,9h6v6H9zM10.5,10.5v3h3v-3H10.5z"/>
+    <!-- Left panel tip -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M2,10h2v4H2z"/>
+    <!-- Right panel tip -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M20,10h2v4H20z"/>
+</vector>

@@ -21,6 +21,7 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.RectF
+import android.location.GnssStatus
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -329,6 +330,35 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private lateinit var tvSatelliteCount: TextView
+    private var lastGnssTotal = 0
+    private var lastGnssUsed = 0
+
+    private val gnssStatusCallback = object : GnssStatus.Callback() {
+        override fun onSatelliteStatusChanged(status: GnssStatus) {
+            lastGnssTotal = status.satelliteCount
+            var used = 0
+            for (i in 0 until status.satelliteCount) {
+                if (status.usedInFix(i)) {
+                    used++
+                }
+            }
+            lastGnssUsed = used
+            if (::tvSatelliteCount.isInitialized) {
+                tvSatelliteCount.text = "$lastGnssTotal"
+            }
+        }
+
+        override fun onStopped() {
+            super.onStopped()
+            lastGnssTotal = 0
+            lastGnssUsed = 0
+            if (::tvSatelliteCount.isInitialized) {
+                tvSatelliteCount.text = "0"
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Initializare MapLibre Native SDK inainte de setContentView
@@ -383,6 +413,15 @@ class MainActivity : AppCompatActivity() {
     private fun initViews(savedInstanceState: Bundle?) {
         // Top Status Pill
         textClock = findViewById(R.id.text_clock)
+        tvSatelliteCount = findViewById(R.id.tv_satellite_count)
+        findViewById<View>(R.id.container_gps_satellites)?.setOnClickListener {
+            val msg = if (lastGnssTotal > 0) {
+                "Sateliți GNSS în vizor: $lastGnssTotal ($lastGnssUsed folosiți pentru fix)"
+            } else {
+                "Căutare sateliți GPS..."
+            }
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
 
         // Bottom Bar
         btnPrevTrack = findViewById(R.id.btn_prev_track)
@@ -2061,6 +2100,7 @@ class MainActivity : AppCompatActivity() {
                 if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
                     lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 1000L, 0f, locationListener)
                 }
+                registerGnssCallback()
                 centerSpeedSub.text = if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) "CAUTARE SEMNAL GPS..." else "ACTIVATI GPS DIN SETARI"
             }
         } catch (e: Exception) {
@@ -2068,8 +2108,31 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun registerGnssCallback() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        locationManager?.registerGnssStatusCallback(ContextCompat.getMainExecutor(this), gnssStatusCallback)
+                    } else {
+                        locationManager?.registerGnssStatusCallback(gnssStatusCallback, Handler(Looper.getMainLooper()))
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun unregisterGnssCallback() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                locationManager?.unregisterGnssStatusCallback(gnssStatusCallback)
+            } catch (_: Exception) {}
+        }
+    }
+
     private fun stopGpsUpdates() {
         try {
+            unregisterGnssCallback()
             locationManager?.removeUpdates(locationListener)
         } catch (_: Exception) {
         }
@@ -2239,6 +2302,7 @@ class MainActivity : AppCompatActivity() {
         ExternalMediaManager.syncActiveSessions(this)
         applyScreenBrightness(isNightMode)
         centerMapView.onResume()
+        registerGnssCallback()
         focusPlayPauseButton()
     }
 
@@ -2248,6 +2312,7 @@ class MainActivity : AppCompatActivity() {
         currentTaskId = taskId
         ExternalMediaManager.onLauncherPaused(this, taskId)
         centerMapView.onPause()
+        unregisterGnssCallback()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
