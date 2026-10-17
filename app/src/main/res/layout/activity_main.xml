@@ -398,8 +398,8 @@
 
                 <ImageView
                     android:id="@+id/iv_satellite_icon"
-                    android:layout_width="22dp"
-                    android:layout_height="22dp"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
                     android:src="@drawable/ic_satellite_gps"
                     app:tint="@color/bmw_amber" />
 
@@ -407,36 +407,36 @@
                     android:id="@+id/tv_satellite_count"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
+                    android:layout_marginStart="6dp"
                     android:text="0"
-                    android:textColor="@color/bmw_white"
-                    android:textSize="20sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.03" />
+                    android:textColor="@color/bmw_amber"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
             </LinearLayout>
 
             <TextView
                 android:id="@+id/bottom_battery_icon"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="24dp"
+                android:layout_marginStart="20dp"
                 android:text="⚡ 88%"
                 android:textColor="@color/bmw_amber"
                 android:textSize="15sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- Ceas Digital deasupra Cercului Central -->
+        <!-- Ceas Digital deasupra Cercului Central, integrat in chenarul gri de sus -->
         <TextView
             android:id="@+id/text_clock"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="14:45"
             android:textColor="@color/bmw_white"
-            android:textSize="22sp"
+            android:textSize="20sp"
             android:textStyle="bold"
             android:letterSpacing="0.08"
             android:gravity="center"
+            android:includeFontPadding="false"
             android:shadowColor="#CC000000"
             android:shadowDx="0"
             android:shadowDy="2"
@@ -444,7 +444,7 @@
             app:layout_constraintStart_toStartOf="@id/gl_center_circle_start"
             app:layout_constraintEnd_toEndOf="@id/gl_center_circle_end"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toTopOf="@id/gl_center_circle_top" />
+            app:layout_constraintBottom_toTopOf="@id/gl_top_pill_top" />
 
         <!-- Caseta Dreapta-Sus: Media Info (Titlu melodie sus, artist jos) -->
         <LinearLayout
