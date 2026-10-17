@@ -9,6 +9,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -17,6 +18,8 @@ import android.graphics.Paint
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import androidx.annotation.OptIn
 import androidx.core.app.NotificationCompat
@@ -47,6 +50,7 @@ class RadioService : MediaSessionService() {
     private lateinit var player: ExoPlayer
     private var stations = mutableListOf<RadioStation>()
     private val artworkCache = mutableMapOf<Int, ByteArray>()
+    private val retryHandler = Handler(Looper.getMainLooper())
 
     private val stopRadioReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -59,6 +63,7 @@ class RadioService : MediaSessionService() {
     }
 
     companion object {
+        const val ACTION_START_PLAY = "com.bmw.carlauncher.ACTION_START_PLAY"
         const val ACTION_RELOAD_STATIONS = "com.bmw.carlauncher.RELOAD_STATIONS"
         const val ACTION_RESTART_STANDBY = "com.bmw.carlauncher.RESTART_STANDBY"
         private const val BG_CHANNEL_ID = "bmw_radio_bg_channel"
@@ -107,10 +112,11 @@ class RadioService : MediaSessionService() {
         player = ExoPlayer.Builder(this)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
+            .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
-        // Porneste pe pauza (autoPlay = false) cand serviciul este creat/repornit in fundal
-        loadPlaylist(autoPlay = false)
+        // Porneste automat redarea (autoPlay = true) pentru a canta imediat la boot / ecran oprit & blocat
+        loadPlaylist(autoPlay = true)
 
         player.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -118,6 +124,19 @@ class RadioService : MediaSessionService() {
                 if (index in stations.indices) {
                     StationManager.saveLastIndex(this@RadioService, index)
                     fetchOrGenerateLogo(index, stations[index])
+                }
+            }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                // Reincearca redarea daca internetul (4G / Wi-Fi) intarzie sa se conecteze la pornire cu ecranul blocat
+                if (player.playWhenReady) {
+                    retryHandler.removeCallbacksAndMessages(null)
+                    retryHandler.postDelayed({
+                        if (player.playWhenReady && !player.isPlaying) {
+                            player.prepare()
+                            player.play()
+                        }
+                    }, 3500L)
                 }
             }
 
@@ -185,6 +204,13 @@ class RadioService : MediaSessionService() {
             if (player.playbackState == Player.STATE_IDLE) {
                 player.prepare()
             }
+        } else {
+            // ACTION_START_PLAY, BOOT_COMPLETED sau pornire initiala in fundal
+            player.playWhenReady = true
+            if (player.playbackState == Player.STATE_IDLE) {
+                player.prepare()
+            }
+            player.play()
         }
         return START_STICKY
     }
@@ -196,23 +222,29 @@ class RadioService : MediaSessionService() {
                 if (nm.getNotificationChannel(BG_CHANNEL_ID) == null) {
                     val ch = NotificationChannel(
                         BG_CHANNEL_ID,
-                        "BMW Car Launcher",
+                        "BMW Radio Live",
                         NotificationManager.IMPORTANCE_LOW
                     ).apply {
                         setShowBadge(false)
+                        lockscreenVisibility = Notification.VISIBILITY_PUBLIC
                     }
                     nm.createNotificationChannel(ch)
                 }
             }
             val notif: Notification = NotificationCompat.Builder(this, BG_CHANNEL_ID)
-                .setContentTitle("BMW Car Launcher")
-                .setContentText("In standby (Pe pauza)")
-                .setSmallIcon(android.R.drawable.ic_media_pause)
+                .setContentTitle("BMW Radio Live")
+                .setContentText("Redare radio activă")
+                .setSmallIcon(R.drawable.ic_launcher)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setOngoing(true)
                 .build()
 
-            startForeground(BG_NOTIF_ID, notif)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(BG_NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+            } else {
+                startForeground(BG_NOTIF_ID, notif)
+            }
         } catch (_: Exception) {
         }
     }
@@ -362,6 +394,7 @@ class RadioService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        retryHandler.removeCallbacksAndMessages(null)
         scheduleRestart(applicationContext)
         try {
             unregisterReceiver(stopRadioReceiver)
@@ -377,8 +410,17 @@ class RadioService : MediaSessionService() {
 
 class RestartReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
+        val action = intent?.action
+        val shouldStandby = (action == RadioService.ACTION_RESTART_STANDBY)
+
+        val targetAction = if (shouldStandby) {
+            RadioService.ACTION_RESTART_STANDBY
+        } else {
+            RadioService.ACTION_START_PLAY
+        }
+
         val serviceIntent = Intent(context, RadioService::class.java).apply {
-            action = RadioService.ACTION_RESTART_STANDBY
+            this.action = targetAction
         }
         try {
             ContextCompat.startForegroundService(context, serviceIntent)

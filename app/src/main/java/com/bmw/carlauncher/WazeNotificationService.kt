@@ -1,18 +1,32 @@
 package com.bmw.carlauncher
 
+import android.app.ActivityManager
+import android.app.ActivityOptions
 import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import androidx.core.app.NotificationCompat
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.PixelFormat
 import android.graphics.drawable.Icon
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.view.Gravity
+import android.view.View
+import android.view.WindowManager
 import java.util.Locale
 
 data class WazeNavData(
@@ -54,6 +68,7 @@ data class ExternalMediaData(
 
 object ExternalMediaManager {
     var currentData: ExternalMediaData = ExternalMediaData()
+    var preferredPackage: String = ""
 
     var listener: ((ExternalMediaData) -> Unit)? = null
         set(value) {
@@ -62,6 +77,236 @@ object ExternalMediaManager {
         }
 
     private var registeredController: MediaController? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var appContext: Context? = null
+    private var launcherTaskId: Int = -1
+    private var autoReturnArmed: Boolean = false
+    private var autoReturnArmTime: Long = 0L
+    private var autoReturnInitialTitle: String = ""
+    private var autoReturnInitialPlaying: Boolean = false
+    private var autoReturnSawNonPlaying: Boolean = false
+    private var bgSawYtMusicNonPlaying: Boolean = false
+    private var lastAutoReturnTriggerTime: Long = 0L
+
+    private val autoReturnPollRunnable = object : Runnable {
+        override fun run() {
+            if (MainActivity.isInForeground && !autoReturnArmed) return
+            if (autoReturnArmed) {
+                val elapsed = SystemClock.elapsedRealtime() - autoReturnArmTime
+                if (elapsed > 180_000L) {
+                    autoReturnArmed = false
+                }
+            }
+            val ctx = appContext ?: WazeNotificationService.instance
+            if (ctx != null) {
+                val ytCtrl = findYtMusicController(ctx)
+                if (ytCtrl != null) {
+                    attachCallback(ytCtrl)
+                } else {
+                    syncActiveSessions(ctx)
+                }
+            }
+            if (!MainActivity.isInForeground || autoReturnArmed) {
+                mainHandler.postDelayed(this, 350L)
+            }
+        }
+    }
+
+    fun armAutoReturnFromYtMusic(context: Context, taskId: Int) {
+        appContext = context.applicationContext
+        launcherTaskId = taskId
+        val ytCtrl = findYtMusicController(context)
+        val pbState = ytCtrl?.playbackState?.state ?: PlaybackState.STATE_NONE
+        autoReturnInitialPlaying = (pbState == PlaybackState.STATE_PLAYING)
+        autoReturnSawNonPlaying = !autoReturnInitialPlaying
+        bgSawYtMusicNonPlaying = !autoReturnInitialPlaying
+        val meta = ytCtrl?.metadata
+        autoReturnInitialTitle = meta?.getString(MediaMetadata.METADATA_KEY_TITLE)
+            ?: meta?.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE)
+            ?: if (currentData.packageName.contains("youtube.music", ignoreCase = true)) currentData.title else ""
+        autoReturnArmTime = SystemClock.elapsedRealtime()
+        autoReturnArmed = true
+        mainHandler.removeCallbacks(autoReturnPollRunnable)
+        mainHandler.postDelayed(autoReturnPollRunnable, 400L)
+    }
+
+    fun onLauncherPaused(context: Context, taskId: Int) {
+        appContext = context.applicationContext
+        if (taskId != -1) launcherTaskId = taskId
+        val ytCtrl = findYtMusicController(context)
+        val pbState = ytCtrl?.playbackState?.state ?: PlaybackState.STATE_NONE
+        val isPlayingNow = (pbState == PlaybackState.STATE_PLAYING)
+        if (!isPlayingNow) {
+            bgSawYtMusicNonPlaying = true
+            autoReturnSawNonPlaying = true
+        }
+        mainHandler.removeCallbacks(autoReturnPollRunnable)
+        mainHandler.postDelayed(autoReturnPollRunnable, 400L)
+    }
+
+    fun cancelAutoReturn() {
+        autoReturnArmed = false
+        bgSawYtMusicNonPlaying = false
+        mainHandler.removeCallbacks(autoReturnPollRunnable)
+    }
+
+    private fun findYtMusicController(context: Context): MediaController? {
+        try {
+            val msm = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager
+            val cn = ComponentName(context, WazeNotificationService::class.java)
+            val sessions = msm?.getActiveSessions(cn) ?: emptyList()
+            return sessions.firstOrNull { it.packageName.contains("youtube.music", ignoreCase = true) }
+        } catch (_: Exception) {}
+        return null
+    }
+
+    private fun checkAutoReturn(pkg: String, title: String, pbState: Int?, isPlaying: Boolean) {
+        if (!pkg.contains("youtube.music", ignoreCase = true)) return
+
+        val activelyPlaying = (pbState == PlaybackState.STATE_PLAYING) || (pbState == null && isPlaying)
+        if (!activelyPlaying) {
+            bgSawYtMusicNonPlaying = true
+            return
+        }
+
+        // Daca BMW Car Launcher este deja in prim-plan, nu facem revenire
+        if (MainActivity.isInForeground) {
+            return
+        }
+
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastAutoReturnTriggerTime < 1500L) return
+
+        // Daca autoReturn este inarmat sau BMW Car Launcher e in fundal si utilizatorul a dat Play in YT Music
+        if (autoReturnArmed || bgSawYtMusicNonPlaying || (now - autoReturnArmTime >= 500L)) {
+            autoReturnArmed = false
+            bgSawYtMusicNonPlaying = false
+            lastAutoReturnTriggerTime = now
+            mainHandler.removeCallbacks(autoReturnPollRunnable)
+            mainHandler.postDelayed({
+                bringLauncherToFront()
+            }, 250L)
+        }
+    }
+
+    private fun bringLauncherToFront() {
+        val ctx = appContext ?: WazeNotificationService.instance ?: return
+        try {
+            syncActiveSessions(ctx)
+        } catch (_: Exception) {}
+
+        // 1. Overlay invizibil 1x1 pentru acordare statut vizibil pe Xiaomi HyperOS / MIUI
+        var tempOverlayView: View? = null
+        var wm: WindowManager? = null
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && Settings.canDrawOverlays(ctx)) {
+            try {
+                wm = ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+                tempOverlayView = View(ctx)
+                val lp = WindowManager.LayoutParams(
+                    1,
+                    1,
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                    PixelFormat.TRANSLUCENT
+                ).apply {
+                    gravity = Gravity.TOP or Gravity.START
+                }
+                wm?.addView(tempOverlayView, lp)
+            } catch (_: Exception) {
+                tempOverlayView = null
+            }
+        }
+
+        val targetTask = if (launcherTaskId != -1) launcherTaskId else MainActivity.currentTaskId
+        try {
+            if (targetTask != -1) {
+                val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+                am?.moveTaskToFront(targetTask, 0)
+            }
+        } catch (_: Exception) {}
+
+        val intent = Intent(ctx, MainActivity::class.java).apply {
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+            )
+            putExtra("FROM_YT_MUSIC_AUTO_RETURN", true)
+        }
+
+        // 2. PendingIntent cu background activity start explicit permis (Android 14/15/16)
+        if (Build.VERSION.SDK_INT >= 34) {
+            try {
+                val options = ActivityOptions.makeBasic().apply {
+                    setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                }
+                val pi = PendingIntent.getActivity(
+                    ctx, 999, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                    options.toBundle()
+                )
+                pi.send(ctx, 0, null, null, null, null, options.toBundle())
+            } catch (_: Exception) {}
+        }
+
+        // 3. Direct startActivity
+        try {
+            ctx.startActivity(intent)
+        } catch (_: Exception) {}
+
+        // 4. Fallback FullScreenIntent notification (garanteaza revenirea rapida)
+        try {
+            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            if (nm != null) {
+                val channelId = "bmw_return_channel"
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val channel = NotificationChannel(
+                        channelId,
+                        "BMW Auto Return",
+                        NotificationManager.IMPORTANCE_HIGH
+                    )
+                    nm.createNotificationChannel(channel)
+                }
+                val pi = PendingIntent.getActivity(
+                    ctx, 998, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val notif = NotificationCompat.Builder(ctx, channelId)
+                    .setSmallIcon(R.drawable.ic_launcher)
+                    .setContentTitle("BMW Car Launcher")
+                    .setPriority(NotificationCompat.PRIORITY_MAX)
+                    .setCategory(NotificationCompat.CATEGORY_CALL)
+                    .setFullScreenIntent(pi, true)
+                    .setAutoCancel(true)
+                    .setTimeoutAfter(1500L)
+                    .build()
+                nm.notify(998, notif)
+                mainHandler.postDelayed({
+                    try { nm.cancel(998) } catch (_: Exception) {}
+                }, 1200L)
+            }
+        } catch (_: Exception) {}
+
+        if (tempOverlayView != null && wm != null) {
+            val viewToRemove = tempOverlayView
+            val windowMgr = wm
+            mainHandler.postDelayed({
+                try {
+                    windowMgr.removeView(viewToRemove)
+                } catch (_: Exception) {}
+            }, 600L)
+        }
+
+        mainHandler.postDelayed({
+            try { syncActiveSessions(ctx) } catch (_: Exception) {}
+        }, 300L)
+        mainHandler.postDelayed({
+            try { syncActiveSessions(ctx) } catch (_: Exception) {}
+        }, 800L)
+    }
 
     private val mediaCallback = object : MediaController.Callback() {
         override fun onMetadataChanged(metadata: MediaMetadata?) {
@@ -75,6 +320,24 @@ object ExternalMediaManager {
         override fun onSessionDestroyed() {
             registeredController = null
         }
+    }
+
+    fun sourceNameForPackage(pkg: String): String {
+        val p = pkg.lowercase(Locale.getDefault())
+        return when {
+            p.contains("youtube.music") -> "YOUTUBE MUSIC"
+            p.contains("youtube") || p.contains("smarttube") || p.contains("newpipe") -> "YOUTUBE"
+            p.contains("spotify") -> "SPOTIFY"
+            else -> "MEDIA PLAYER"
+        }
+    }
+
+    private fun isControllerPlaying(mc: MediaController?): Boolean {
+        val pbState = mc?.playbackState?.state ?: return false
+        return (pbState == PlaybackState.STATE_PLAYING ||
+                pbState == PlaybackState.STATE_BUFFERING ||
+                pbState == PlaybackState.STATE_SKIPPING_TO_NEXT ||
+                pbState == PlaybackState.STATE_SKIPPING_TO_PREVIOUS)
     }
 
     fun attachCallback(mc: MediaController?) {
@@ -94,33 +357,28 @@ object ExternalMediaManager {
     fun syncFromController(mc: MediaController?) {
         val ctrl = mc ?: registeredController ?: return
         try {
+            val pkg = ctrl.packageName
+            val samePackage = (currentData.packageName == pkg)
             val meta = ctrl.metadata
-            val state = ctrl.playbackState
             val title = meta?.getString(MediaMetadata.METADATA_KEY_TITLE)
                 ?: meta?.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE)
-                ?: currentData.title
+                ?: if (samePackage) currentData.title else ""
             val artist = meta?.getString(MediaMetadata.METADATA_KEY_ARTIST)
                 ?: meta?.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST)
                 ?: meta?.getString(MediaMetadata.METADATA_KEY_AUTHOR)
-                ?: currentData.artist
+                ?: meta?.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE)
+                ?: meta?.getString(MediaMetadata.METADATA_KEY_WRITER)
+                ?: if (samePackage) currentData.artist else ""
             val art = meta?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
                 ?: meta?.getBitmap(MediaMetadata.METADATA_KEY_ART)
                 ?: meta?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
-                ?: currentData.artBitmap
+                ?: if (samePackage) currentData.artBitmap else null
 
-            val pbState = state?.state
-            val isPlaying = (pbState == PlaybackState.STATE_PLAYING ||
-                    pbState == PlaybackState.STATE_BUFFERING ||
-                    pbState == PlaybackState.STATE_SKIPPING_TO_NEXT ||
-                    pbState == PlaybackState.STATE_SKIPPING_TO_PREVIOUS)
+            val pbState = ctrl.playbackState?.state
+            val isPlaying = isControllerPlaying(ctrl)
+            val source = sourceNameForPackage(pkg)
 
-            val pkg = ctrl.packageName
-            val source = when {
-                pkg.contains("youtube.music") -> "YOUTUBE MUSIC"
-                pkg.contains("youtube") -> "YOUTUBE VIDEO"
-                pkg.contains("spotify") -> "SPOTIFY"
-                else -> "MEDIA PLAYER"
-            }
+            checkAutoReturn(pkg, title, pbState, isPlaying)
 
             if (title.isNotEmpty()) {
                 update(
@@ -140,32 +398,81 @@ object ExternalMediaManager {
 
     fun update(data: ExternalMediaData) {
         currentData = data
+        checkAutoReturn(data.packageName, data.title, data.mediaController?.playbackState?.state, data.isPlaying)
         listener?.invoke(data)
     }
 
-    fun getActiveMusicController(context: Context): MediaController? {
-        // 1. Daca avem deja o sesiune valida in currentData
-        currentData.mediaController?.let {
-            attachCallback(it)
-            return it
+    private fun isKnownMediaPackage(pkg: String): Boolean {
+        val p = pkg.lowercase(Locale.getDefault())
+        return p.contains("youtube.music") ||
+                p.contains("youtube") ||
+                p.contains("smarttube") ||
+                p.contains("newpipe") ||
+                p.contains("spotify") ||
+                p.contains("music")
+    }
+
+    fun selectBestController(sessions: List<MediaController>, appPackageName: String): MediaController? {
+        val externalSessions = sessions.filter { it.packageName != appPackageName }
+        if (externalSessions.isEmpty()) return null
+
+        val pref = preferredPackage.lowercase(Locale.getDefault())
+
+        // 1. Sesiune care ruleaza activ si corespunde aplicatiei preferate (YouTube sau YT Music)
+        if (pref.isNotEmpty()) {
+            externalSessions.firstOrNull {
+                it.packageName.lowercase(Locale.getDefault()) == pref && isControllerPlaying(it)
+            }?.let { return it }
         }
 
-        // 2. Cauta sesiuni active in sistem prin MediaSessionManager
+        // 2. Orice sesiune media cunoscuta (YouTube, YT Music, Spotify etc.) care ruleaza activ
+        externalSessions.firstOrNull {
+            isKnownMediaPackage(it.packageName) && isControllerPlaying(it)
+        }?.let { return it }
+
+        // 3. Orice sesiune externa care ruleaza activ
+        externalSessions.firstOrNull { isControllerPlaying(it) }?.let { return it }
+
+        // 4. Sesiune (chiar si pe pauza) a aplicatiei selectate de utilizator
+        if (pref.isNotEmpty()) {
+            externalSessions.firstOrNull {
+                it.packageName.lowercase(Locale.getDefault()) == pref
+            }?.let { return it }
+        }
+
+        // 5. Sesiunea curenta daca mai este activa
+        currentData.mediaController?.let { currentCtrl ->
+            externalSessions.firstOrNull { it.packageName == currentCtrl.packageName }?.let { return it }
+        }
+
+        // 6. Orice sesiune YouTube / YouTube Music / Spotify / Media
+        return externalSessions.firstOrNull { isKnownMediaPackage(it.packageName) }
+            ?: externalSessions.firstOrNull()
+    }
+
+    fun syncActiveSessions(context: Context): MediaController? {
         try {
             val msm = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager
             val cn = ComponentName(context, WazeNotificationService::class.java)
             val sessions = msm?.getActiveSessions(cn) ?: emptyList()
-
-            val musicCtrl = sessions.firstOrNull {
-                val p = it.packageName.lowercase(Locale.getDefault())
-                p.contains("youtube.music") || p.contains("spotify") || p.contains("music")
-            } ?: sessions.firstOrNull { it.packageName != context.packageName }
-
-            if (musicCtrl != null) {
-                attachCallback(musicCtrl)
-                return musicCtrl
+            val best = selectBestController(sessions, context.packageName)
+            if (best != null) {
+                attachCallback(best)
+                return best
             }
         } catch (_: Exception) {}
+        return null
+    }
+
+    fun getActiveMusicController(context: Context): MediaController? {
+        // 1. Cauta intai sesiunile active din MediaSessionManager (pentru a detecta comutarea intre YouTube si YT Music)
+        syncActiveSessions(context)?.let { return it }
+
+        // 2. Fallback pe controllerul salvat din notificare daca este disponibil
+        currentData.mediaController?.let {
+            attachCallback(it)
+            return it
+        }
 
         return null
     }
@@ -178,21 +485,42 @@ class WazeNotificationService : NotificationListenerService() {
 
         fun refresh() {
             try {
-                instance?.activeNotifications?.forEach { sbn ->
-                    instance?.onNotificationPosted(sbn)
+                instance?.let { srv ->
+                    ExternalMediaManager.syncActiveSessions(srv)
+                    srv.activeNotifications?.forEach { sbn ->
+                        srv.onNotificationPosted(sbn)
+                    }
                 }
             } catch (_: Exception) {}
+        }
+    }
+
+    private val sessionsChangedListener = MediaSessionManager.OnActiveSessionsChangedListener { controllers ->
+        if (controllers != null) {
+            val best = ExternalMediaManager.selectBestController(controllers, packageName)
+            if (best != null) {
+                ExternalMediaManager.attachCallback(best)
+            }
         }
     }
 
     override fun onListenerConnected() {
         super.onListenerConnected()
         instance = this
+        try {
+            val msm = getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager
+            val cn = ComponentName(this, WazeNotificationService::class.java)
+            msm?.addOnActiveSessionsChangedListener(sessionsChangedListener, cn)
+        } catch (_: Exception) {}
         refresh()
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        try {
+            val msm = getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager
+            msm?.removeOnActiveSessionsChangedListener(sessionsChangedListener)
+        } catch (_: Exception) {}
         if (instance == this) instance = null
     }
 
@@ -220,69 +548,72 @@ class WazeNotificationService : NotificationListenerService() {
             }
         }
 
-        // 2. Asculta notificarile Media de la YouTube Music, Spotify, YouTube sau playere video/audio externe
+        // 2. Asculta notificarile Media de la YouTube Music, YouTube, Spotify sau playere video/audio externe
         if (pkg != packageName) {
             val notification = sbn.notification ?: return
+            val extras = notification.extras ?: return
+            val hasMediaSession = extras.containsKey(Notification.EXTRA_MEDIA_SESSION)
             val isMediaCategory = notification.category == Notification.CATEGORY_TRANSPORT
-            val isKnownMediaApp = pkg.contains("youtube") || pkg.contains("music") || pkg.contains("spotify")
+            val pLower = pkg.lowercase(Locale.getDefault())
+            val isKnownMediaApp = pLower.contains("youtube") || pLower.contains("smarttube") ||
+                    pLower.contains("newpipe") || pLower.contains("music") || pLower.contains("spotify")
 
-            if (isMediaCategory || isKnownMediaApp) {
-                val extras = notification.extras ?: return
-                val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim() ?: ""
-                val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim() ?: ""
+            if (isMediaCategory || isKnownMediaApp || hasMediaSession) {
+                var title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim() ?: ""
+                var text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim() ?: ""
+
+                var isPlaying = false
+                var mediaCtrl: android.media.session.MediaController? = null
+                try {
+                    val token = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        extras.getParcelable(Notification.EXTRA_MEDIA_SESSION, android.media.session.MediaSession.Token::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        extras.getParcelable(Notification.EXTRA_MEDIA_SESSION)
+                    }
+                    if (token != null) {
+                        val mc = android.media.session.MediaController(this, token)
+                        mediaCtrl = mc
+                        ExternalMediaManager.attachCallback(mc)
+                        val state = mc.playbackState?.state
+                        isPlaying = (state == PlaybackState.STATE_PLAYING ||
+                                state == PlaybackState.STATE_BUFFERING ||
+                                state == PlaybackState.STATE_SKIPPING_TO_NEXT ||
+                                state == PlaybackState.STATE_SKIPPING_TO_PREVIOUS)
+
+                        val meta = mc.metadata
+                        if (title.isEmpty()) {
+                            title = meta?.getString(MediaMetadata.METADATA_KEY_TITLE)
+                                ?: meta?.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE)
+                                ?: ""
+                        }
+                        if (text.isEmpty()) {
+                            text = meta?.getString(MediaMetadata.METADATA_KEY_ARTIST)
+                                ?: meta?.getString(MediaMetadata.METADATA_KEY_AUTHOR)
+                                ?: meta?.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE)
+                                ?: ""
+                        }
+                    } else {
+                        val actions = notification.actions
+                        if (actions != null) {
+                            isPlaying = actions.any { action ->
+                                val actTitle = action.title?.toString()?.lowercase(Locale.getDefault()) ?: ""
+                                actTitle.contains("pause") || actTitle.contains("pauză")
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
 
                 if (title.isNotEmpty()) {
-                    var isPlaying = false
-                    var mediaCtrl: android.media.session.MediaController? = null
-                    try {
-                        val token = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            extras.getParcelable(Notification.EXTRA_MEDIA_SESSION, android.media.session.MediaSession.Token::class.java)
-                        } else {
-                            @Suppress("DEPRECATION")
-                            extras.getParcelable(Notification.EXTRA_MEDIA_SESSION)
-                        }
-                        if (token != null) {
-                            val mc = android.media.session.MediaController(this, token)
-                            mediaCtrl = mc
-                            ExternalMediaManager.attachCallback(mc)
-                            val state = mc.playbackState?.state
-                            isPlaying = (state == PlaybackState.STATE_PLAYING ||
-                                    state == PlaybackState.STATE_BUFFERING ||
-                                    state == PlaybackState.STATE_SKIPPING_TO_NEXT ||
-                                    state == PlaybackState.STATE_SKIPPING_TO_PREVIOUS)
-                        } else {
-                            val actions = notification.actions
-                            if (actions != null) {
-                                isPlaying = actions.any { action ->
-                                    val actTitle = action.title?.toString()?.lowercase(Locale.getDefault()) ?: ""
-                                    actTitle.contains("pause") || actTitle.contains("pauză")
-                                }
-                            }
-                        }
-                    } catch (_: Exception) {}
+                    // Daca alta aplicatie media ruleaza deja si aceasta notificare este doar pe pauza in fundal, nu o lasam sa suprascrie playerul activ
+                    if (!isPlaying && ExternalMediaManager.currentData.isPlaying &&
+                        ExternalMediaManager.currentData.packageName.isNotEmpty() &&
+                        ExternalMediaManager.currentData.packageName != pkg) {
+                        return
+                    }
 
                     var art: Bitmap? = null
-                    try {
-                        val iconObj = extras.getParcelable<android.os.Parcelable>(Notification.EXTRA_LARGE_ICON)
-                        if (iconObj is Bitmap) {
-                            art = iconObj
-                        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && iconObj is Icon) {
-                            val drawable = iconObj.loadDrawable(this)
-                            if (drawable != null) {
-                                val bmp = Bitmap.createBitmap(
-                                    drawable.intrinsicWidth.coerceAtLeast(100),
-                                    drawable.intrinsicHeight.coerceAtLeast(100),
-                                    Bitmap.Config.ARGB_8888
-                                )
-                                val c = android.graphics.Canvas(bmp)
-                                drawable.setBounds(0, 0, c.width, c.height)
-                                drawable.draw(c)
-                                art = bmp
-                            }
-                        }
-                    } catch (_: Exception) {}
-
-                    if (art == null && mediaCtrl != null) {
+                    if (mediaCtrl != null) {
                         try {
                             val meta = mediaCtrl.metadata
                             art = meta?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
@@ -290,16 +621,45 @@ class WazeNotificationService : NotificationListenerService() {
                                 ?: meta?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
                         } catch (_: Exception) {}
                     }
+
                     if (art == null) {
+                        try {
+                            @Suppress("DEPRECATION")
+                            val picObj = extras.getParcelable<android.os.Parcelable>(Notification.EXTRA_PICTURE)
+                            if (picObj is Bitmap) {
+                                art = picObj
+                            }
+                        } catch (_: Exception) {}
+                    }
+
+                    if (art == null) {
+                        try {
+                            @Suppress("DEPRECATION")
+                            val iconObj = extras.getParcelable<android.os.Parcelable>(Notification.EXTRA_LARGE_ICON)
+                            if (iconObj is Bitmap) {
+                                art = iconObj
+                            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && iconObj is Icon) {
+                                val drawable = iconObj.loadDrawable(this)
+                                if (drawable != null) {
+                                    val bmp = Bitmap.createBitmap(
+                                        drawable.intrinsicWidth.coerceAtLeast(100),
+                                        drawable.intrinsicHeight.coerceAtLeast(100),
+                                        Bitmap.Config.ARGB_8888
+                                    )
+                                    val c = android.graphics.Canvas(bmp)
+                                    drawable.setBounds(0, 0, c.width, c.height)
+                                    drawable.draw(c)
+                                    art = bmp
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+
+                    if (art == null && ExternalMediaManager.currentData.packageName == pkg) {
                         art = ExternalMediaManager.currentData.artBitmap
                     }
 
-                    val source = when {
-                        pkg.contains("youtube.music") -> "YOUTUBE MUSIC"
-                        pkg.contains("youtube") -> "YOUTUBE VIDEO"
-                        pkg.contains("spotify") -> "SPOTIFY"
-                        else -> "MEDIA PLAYER"
-                    }
+                    val source = ExternalMediaManager.sourceNameForPackage(pkg)
 
                     ExternalMediaManager.update(
                         ExternalMediaData(
@@ -350,6 +710,9 @@ class WazeNotificationService : NotificationListenerService() {
                     isPlaying = false
                 )
             )
+            // Daca mai exista o alta sesiune media activa (ex. YouTube sau YT Music), sincronizeaza cu aceasta
+            ExternalMediaManager.syncActiveSessions(this)
         }
     }
 }
+

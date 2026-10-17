@@ -1,921 +1,1679 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/root_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_dashboard_leather"
     android:clipChildren="false"
     android:clipToPadding="false"
-    android:paddingStart="6dp"
-    android:paddingEnd="6dp"
-    android:paddingTop="2dp"
-    android:paddingBottom="2dp">
+    android:background="#1B1A1E">
 
     <!-- ============================================================== -->
-    <!-- 1. TOP ARC BAR: WIFI, LINK, BT, CLOCK WITH -/+, GLOBE, TEMP     -->
+    <!-- 1. DASHBOARD CONTAINER WITH FIXED 1024:458 ASPECT RATIO       -->
+    <!-- Mentine cercul central si cercurile de jos perfect rotunde    -->
     <!-- ============================================================== -->
-    <RelativeLayout
-        android:id="@+id/top_bar"
-        android:layout_width="match_parent"
-        android:layout_height="40dp"
-        android:layout_alignParentTop="true"
-        android:gravity="center_vertical"
-        android:paddingStart="40dp"
-        android:paddingEnd="40dp">
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/dashboard_container"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        app:layout_constraintDimensionRatio="1024:458"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- Top Left: WiFi, Anchor NO, Bluetooth (BMW Amber) -->
-        <LinearLayout
+        <!-- Background Image with exact 1024x458 proportions -->
+        <ImageView
+            android:id="@+id/img_dashboard_bg"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:scaleType="fitXY"
+            android:src="@drawable/bg_dashboard"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <!-- ============================================================== -->
+        <!-- 2. PERCENTAGE GUIDELINES FOR ACCURATE ALIGNMENT                -->
+        <!-- ============================================================== -->
+
+        <!-- Status Pills (Top Row) -->
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_top_pill_top"
             android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:layout_alignParentStart="true"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintGuide_percent="0.090" />
 
-            <TextView
-                android:id="@+id/top_wifi_icon"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="ᯤ"
-                android:textColor="@color/bmw_amber"
-                android:textSize="18sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/top_link_status"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
-                android:text="⚓ NO"
-                android:textColor="@color/bmw_amber"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/top_bt_icon"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
-                android:text="ᛒ"
-                android:textColor="@color/bmw_amber"
-                android:textSize="18sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <!-- Top Center: Volume Down (-), Digital Clock, Volume Up (+) at SAME LEVEL -->
-        <LinearLayout
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_top_pill_bottom"
             android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:layout_centerInParent="true"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintGuide_percent="0.200" />
 
-            <TextView
-                android:id="@+id/btn_vol_down"
-                android:layout_width="44dp"
-                android:layout_height="36dp"
-                android:gravity="center"
-                android:text="—"
-                android:textColor="@color/color_nav_btn_text"
-                android:background="@drawable/bg_nav_btn_focus"
-                android:textSize="22sp"
-                android:textStyle="bold"
-                android:clickable="true"
-                android:focusable="true"
-                android:nextFocusLeft="@+id/btn_left_1"
-                android:nextFocusRight="@+id/btn_vol_up"
-                android:nextFocusDown="@+id/center_circle"
-                android:nextFocusUp="@+id/btn_vol_down" />
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_pill_left_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.020" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_pill_left_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.385" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_pill_right_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.615" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_pill_right_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.980" />
+
+        <!-- Main Buttons Horizontal Rows -->
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_row_top_top"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintGuide_percent="0.275" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_row_top_bottom"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintGuide_percent="0.415" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_row_mid_top"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintGuide_percent="0.425" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_row_mid_bottom"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintGuide_percent="0.565" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_row_bot_top"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintGuide_percent="0.575" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_row_bot_bottom"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintGuide_percent="0.715" />
+
+        <!-- Main Buttons Vertical Columns -->
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_btn_left_outer_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.060" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_btn_left_outer_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.340" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_btn_left_mid_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.055" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_btn_left_mid_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.340" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_btn_right_outer_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.660" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_btn_right_outer_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.940" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_btn_right_mid_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.660" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_btn_right_mid_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.945" />
+
+        <!-- Center Circle (Map / Core Dial) -->
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_center_circle_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.353" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_center_circle_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.647" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_center_circle_top"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintGuide_percent="0.160" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_center_circle_bottom"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintGuide_percent="0.816" />
+
+        <!-- Lower 6 Circles (Y: 80.5% -> 95.5%) -->
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_circles_top"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintGuide_percent="0.805" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_circles_bottom"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintGuide_percent="0.955" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_c1_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.035" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_c1_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.102" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_c2_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.126" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_c2_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.193" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_c3_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.217" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_c3_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.284" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_c4_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.721" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_c4_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.788" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_c5_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.810" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_c5_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.877" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_c6_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.898" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_c6_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.965" />
+
+        <!-- Bottom Center Media Controls (Y: 92.5% -> 99.0%) -->
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_media_bar_top"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintGuide_percent="0.925" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_media_bar_bottom"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintGuide_percent="0.990" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_media_prev_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.400" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_media_prev_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.465" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_media_play_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.465" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_media_play_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.535" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_media_next_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.535" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/gl_media_next_end"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.600" />
+
+
+        <!-- ============================================================== -->
+        <!-- 3. TOP STATUS PILLS                                             -->
+        <!-- ============================================================== -->
+
+        <!-- Caseta Stânga-Sus: Doar Ceasul digital si Bateria telefonului  -->
+        <LinearLayout
+            android:id="@+id/pill_status_left"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            app:layout_constraintTop_toBottomOf="@id/gl_top_pill_top"
+            app:layout_constraintBottom_toTopOf="@id/gl_top_pill_bottom"
+            app:layout_constraintStart_toEndOf="@id/gl_pill_left_start"
+            app:layout_constraintEnd_toStartOf="@id/gl_pill_left_end">
 
             <TextView
                 android:id="@+id/text_clock"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
-                android:layout_marginEnd="14dp"
-                android:text="1:37"
+                android:text="14:45"
                 android:textColor="@color/bmw_white"
-                android:textSize="28sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/btn_vol_up"
-                android:layout_width="44dp"
-                android:layout_height="36dp"
-                android:gravity="center"
-                android:text="+"
-                android:textColor="@color/color_nav_btn_text"
-                android:background="@drawable/bg_nav_btn_focus"
-                android:textSize="24sp"
+                android:textSize="22sp"
                 android:textStyle="bold"
-                android:clickable="true"
-                android:focusable="true"
-                android:nextFocusLeft="@+id/btn_vol_down"
-                android:nextFocusRight="@+id/btn_right_1"
-                android:nextFocusDown="@+id/center_circle"
-                android:nextFocusUp="@+id/btn_vol_up" />
-        </LinearLayout>
-
-        <!-- Top Right: Globe & Moon + Temp (BMW Amber) -->
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:layout_alignParentEnd="true"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+                android:letterSpacing="0.05" />
 
             <TextView
-                android:id="@+id/top_globe_icon"
+                android:id="@+id/bottom_battery_icon"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="🌐"
-                android:textColor="@color/bmw_amber"
-                android:textSize="17sp" />
-
-            <TextView
-                android:id="@+id/top_temp_text"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:text="🌙 +5°"
+                android:layout_marginStart="24dp"
+                android:text="⚡ 88%"
                 android:textColor="@color/bmw_amber"
                 android:textSize="15sp"
                 android:textStyle="bold" />
         </LinearLayout>
-    </RelativeLayout>
 
-    <!-- ============================================================== -->
-    <!-- 2. BOTTOM ARC BAR: GPS COUNT, PLAYER WITH </>, BATTERY, SETTING -->
-    <!-- ============================================================== -->
-    <RelativeLayout
-        android:id="@+id/bottom_bar"
-        android:layout_width="match_parent"
-        android:layout_height="44dp"
-        android:layout_alignParentBottom="true"
-        android:gravity="center_vertical"
-        android:paddingStart="40dp"
-        android:paddingEnd="40dp">
-
-        <!-- Bottom Left: GPS 22, OFF, Plus (BMW Amber) -->
+        <!-- Caseta Dreapta-Sus: Media Info (Titlu melodie sus, artist jos) -->
         <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:layout_alignParentStart="true"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:id="@+id/pill_status_right"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            app:layout_constraintTop_toBottomOf="@id/gl_top_pill_top"
+            app:layout_constraintBottom_toTopOf="@id/gl_top_pill_bottom"
+            app:layout_constraintStart_toEndOf="@id/gl_pill_right_start"
+            app:layout_constraintEnd_toStartOf="@id/gl_pill_right_end">
 
             <TextView
-                android:id="@+id/bottom_gps_count"
-                android:layout_width="wrap_content"
+                android:id="@+id/bottom_track_title"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="⌖ 22"
-                android:textColor="@color/bmw_amber"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:gravity="center"
+                android:text="No Media"
+                android:textColor="@color/bmw_white"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:singleLine="true"
+                android:ellipsize="marquee"
+                android:marqueeRepeatLimit="marquee_forever"
+                android:scrollHorizontally="true"
+                android:focusable="false" />
 
             <TextView
-                android:id="@+id/bottom_off_btn"
-                android:layout_width="wrap_content"
+                android:id="@+id/bottom_track_artist"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
-                android:text="⊝ OFF"
+                android:layout_marginTop="2dp"
+                android:gravity="center"
+                android:text="Selectează o piesă..."
                 android:textColor="@color/bmw_amber"
+                android:textSize="11sp"
+                android:singleLine="true"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+
+        <!-- ============================================================== -->
+        <!-- 4. CELE 6 BUTOANE PRINCIPALE (ZONE TRANSPARENTE CU RIPPLE)    -->
+        <!-- ============================================================== -->
+
+        <!-- Stânga-Sus: RADIO -->
+        <com.bmw.carlauncher.BmwWingGlowButton
+            android:id="@+id/btn_left_1"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:nextFocusForward="@+id/btn_left_2"
+            app:isRightSide="false"
+            app:bandPosition="0"
+            app:buttonMask="@drawable/ic_mask_radio"
+            app:layout_constraintTop_toBottomOf="@id/gl_row_top_top"
+            app:layout_constraintBottom_toTopOf="@id/gl_row_top_bottom"
+            app:layout_constraintStart_toEndOf="@id/gl_btn_left_outer_start"
+            app:layout_constraintEnd_toStartOf="@id/gl_btn_left_outer_end" />
+
+        <!-- Stânga-Mijloc: NAVIGATIE -->
+        <com.bmw.carlauncher.BmwWingGlowButton
+            android:id="@+id/btn_left_2"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:nextFocusForward="@+id/btn_left_3"
+            app:isRightSide="false"
+            app:bandPosition="1"
+            app:buttonMask="@drawable/ic_mask_navigatie"
+            app:layout_constraintTop_toBottomOf="@id/gl_row_mid_top"
+            app:layout_constraintBottom_toTopOf="@id/gl_row_mid_bottom"
+            app:layout_constraintStart_toEndOf="@id/gl_btn_left_mid_start"
+            app:layout_constraintEnd_toStartOf="@id/gl_btn_left_mid_end" />
+
+        <!-- Stânga-Jos: MUSIC -->
+        <com.bmw.carlauncher.BmwWingGlowButton
+            android:id="@+id/btn_left_3"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:nextFocusForward="@+id/btn_prev_track"
+            app:isRightSide="false"
+            app:bandPosition="2"
+            app:buttonMask="@drawable/ic_mask_music"
+            app:layout_constraintTop_toBottomOf="@id/gl_row_bot_top"
+            app:layout_constraintBottom_toTopOf="@id/gl_row_bot_bottom"
+            app:layout_constraintStart_toEndOf="@id/gl_btn_left_outer_start"
+            app:layout_constraintEnd_toStartOf="@id/gl_btn_left_outer_end" />
+
+        <!-- Dreapta-Sus: TELEFON -->
+        <com.bmw.carlauncher.BmwWingGlowButton
+            android:id="@+id/btn_right_1"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:nextFocusForward="@+id/center_circle"
+            app:isRightSide="true"
+            app:bandPosition="0"
+            app:buttonMask="@drawable/ic_mask_telefon"
+            app:layout_constraintTop_toBottomOf="@id/gl_row_top_top"
+            app:layout_constraintBottom_toTopOf="@id/gl_row_top_bottom"
+            app:layout_constraintStart_toEndOf="@id/gl_btn_right_outer_start"
+            app:layout_constraintEnd_toStartOf="@id/gl_btn_right_outer_end" />
+
+        <!-- Dreapta-Mijloc: WHATSAPP -->
+        <com.bmw.carlauncher.BmwWingGlowButton
+            android:id="@+id/btn_right_2"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:nextFocusForward="@+id/btn_right_1"
+            app:isRightSide="true"
+            app:bandPosition="1"
+            app:buttonMask="@drawable/ic_mask_whatsapp"
+            app:layout_constraintTop_toBottomOf="@id/gl_row_mid_top"
+            app:layout_constraintBottom_toTopOf="@id/gl_row_mid_bottom"
+            app:layout_constraintStart_toEndOf="@id/gl_btn_right_mid_start"
+            app:layout_constraintEnd_toStartOf="@id/gl_btn_right_mid_end" />
+
+        <!-- Dreapta-Jos: APLICATII -->
+        <com.bmw.carlauncher.BmwWingGlowButton
+            android:id="@+id/btn_right_3"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:nextFocusForward="@+id/btn_right_2"
+            app:isRightSide="true"
+            app:bandPosition="2"
+            app:buttonMask="@drawable/ic_mask_aplicatii"
+            app:layout_constraintTop_toBottomOf="@id/gl_row_bot_top"
+            app:layout_constraintBottom_toTopOf="@id/gl_row_bot_bottom"
+            app:layout_constraintStart_toEndOf="@id/gl_btn_right_outer_start"
+            app:layout_constraintEnd_toStartOf="@id/gl_btn_right_outer_end" />
+
+
+        <!-- ============================================================== -->
+        <!-- 5. CERCUL CENTRAL (MAPA / MEDIA / RADIO / BMW)                 -->
+        <!-- Raport 1:1 păstrat exact în interiorul ramei metalice           -->
+        <!-- ============================================================== -->
+        <!-- Halo glow care inconjoara cercul central cand are focus -->
+        <com.bmw.carlauncher.BmwCircleHaloView
+            android:id="@+id/center_circle_halo"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:clickable="false"
+            android:focusable="false"
+            android:layout_marginStart="-50dp"
+            android:layout_marginEnd="-50dp"
+            android:layout_marginTop="-50dp"
+            android:layout_marginBottom="-50dp"
+            app:layout_constraintTop_toTopOf="@id/center_circle"
+            app:layout_constraintBottom_toBottomOf="@id/center_circle"
+            app:layout_constraintStart_toStartOf="@id/center_circle"
+            app:layout_constraintEnd_toEndOf="@id/center_circle" />
+
+        <FrameLayout
+            android:id="@+id/center_circle"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:descendantFocusability="blocksDescendants"
+            android:nextFocusForward="@+id/btn_night_mode"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintTop_toBottomOf="@id/gl_center_circle_top"
+            app:layout_constraintBottom_toTopOf="@id/gl_center_circle_bottom"
+            app:layout_constraintStart_toEndOf="@id/gl_center_circle_start"
+            app:layout_constraintEnd_toStartOf="@id/gl_center_circle_end">
+
+            <!-- Inner Core Content Container -->
+            <FrameLayout
+                android:id="@+id/center_core_container"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <!-- 0. MEDIA VIEW -->
+                <FrameLayout
+                    android:id="@+id/view_center_media"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_circle_clip"
+                    android:clipToOutline="true"
+                    android:visibility="gone">
+
+                    <FrameLayout
+                        android:id="@+id/youtube_circle_container"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/bg_circle_clip"
+                        android:clipToOutline="true"
+                        android:visibility="gone" />
+
+                    <ImageView
+                        android:id="@+id/center_media_thumbnail"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/bmw_logo"
+                        android:scaleType="centerCrop" />
+
+                    <View
+                        android:id="@+id/center_media_scrim"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/bg_media_overlay_scrim"
+                        android:visibility="gone" />
+
+                    <LinearLayout
+                        android:id="@+id/center_media_info_container"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:padding="16dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:id="@+id/center_media_source"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:visibility="gone" />
+
+                        <TextView
+                            android:id="@+id/center_media_title"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:visibility="gone" />
+
+                        <TextView
+                            android:id="@+id/center_media_artist"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:visibility="gone" />
+                    </LinearLayout>
+
+                    <View
+                        android:id="@+id/youtube_circle_touch_overlay"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@android:color/transparent"
+                        android:clickable="true"
+                        android:focusable="false"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <!-- 1. BMW LOGO VIEW (Default) -->
+                <FrameLayout
+                    android:id="@+id/view_center_bmw"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:visibility="visible">
+
+                    <ImageView
+                        android:id="@+id/center_bmw_badge"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center"
+                        android:src="@drawable/bmw_logo"
+                        android:scaleType="fitCenter" />
+                </FrameLayout>
+
+                <!-- 2. RADIO VIEW -->
+                <LinearLayout
+                    android:id="@+id/view_center_radio"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_circle_clip"
+                    android:clipToOutline="true"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <ImageView
+                        android:id="@+id/center_radio_art"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:padding="42dp"
+                        android:src="@drawable/ic_gauge_radio"
+                        android:scaleType="fitCenter" />
+
+                    <TextView
+                        android:id="@+id/center_radio_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/center_radio_sub"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/center_radio_status"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <!-- 3. WAZE DIRECTIONS VIEW -->
+                <LinearLayout
+                    android:id="@+id/view_center_waze"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/center_waze_icon"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="↱"
+                        android:textColor="@color/bmw_amber"
+                        android:textSize="38sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/center_waze_distance"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="350 m"
+                        android:textColor="@color/bmw_white"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/center_waze_road"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="Bulevardul Unirii"
+                        android:textColor="@color/bmw_amber_light"
+                        android:textSize="11sp"
+                        android:maxLines="1" />
+
+                    <TextView
+                        android:id="@+id/center_waze_eta"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="ETA: 14:25 • 4.2 km"
+                        android:textColor="@color/bmw_gray_text"
+                        android:textSize="10sp" />
+                </LinearLayout>
+
+                <!-- 4. SPEEDOMETER VIEW -->
+                <LinearLayout
+                    android:id="@+id/view_center_speedo"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/center_speed_value"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0"
+                        android:textColor="@color/bmw_amber"
+                        android:textSize="46sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/center_speed_unit"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="KM/H"
+                        android:textColor="@color/bmw_white"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="0.1" />
+
+                    <TextView
+                        android:id="@+id/center_speed_sub"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="GPS READY"
+                        android:textColor="@color/bmw_gray_text"
+                        android:textSize="9sp" />
+                </LinearLayout>
+
+                <!-- 5. MAPLIBRE 3D LIVE VECTOR MAP VIEW -->
+                <FrameLayout
+                    android:id="@+id/view_center_map"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_circle_clip"
+                    android:clipToOutline="true"
+                    android:visibility="gone">
+
+                    <org.maplibre.android.maps.MapView
+                        android:id="@+id/center_map_view"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent" />
+
+                    <!-- Vignette shadow around circular edge for depth -->
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/bg_map_vignette" />
+
+                    <!-- Top badge: KM/H speed -->
+                    <LinearLayout
+                        android:id="@+id/map_speed_badge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="top|center_horizontal"
+                        android:layout_marginTop="16dp"
+                        android:orientation="horizontal"
+                        android:gravity="center"
+                        android:paddingStart="10dp"
+                        android:paddingEnd="10dp"
+                        android:paddingTop="3dp"
+                        android:paddingBottom="3dp"
+                        android:background="@drawable/bg_speed_badge">
+
+                        <TextView
+                            android:id="@+id/map_speed_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textColor="@color/bmw_amber"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/map_speed_text_unit"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="3dp"
+                            android:text="km/h"
+                            android:textColor="@color/bmw_white"
+                            android:textSize="10sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <!-- Recenter Button -->
+                    <TextView
+                        android:id="@+id/btn_map_recenter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="bottom|center_horizontal"
+                        android:layout_marginBottom="22dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:paddingTop="5dp"
+                        android:paddingBottom="5dp"
+                        android:background="@drawable/bg_speed_badge"
+                        android:text="🎯 RECENTRARE"
+                        android:textColor="@color/bmw_amber"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+            </FrameLayout>
+        </FrameLayout>
+
+
+        <!-- ============================================================== -->
+        <!-- 6. CELE 6 CERCURI DE JOS (Y: 80.5% -> 95.5%)                   -->
+        <!-- ============================================================== -->
+
+        <!-- Cercul 1 (Stânga 1 - gol) -->
+        <FrameLayout
+            android:id="@+id/circle_btn_1"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="@drawable/bg_ripple_circle"
+            android:clickable="false"
+            android:focusable="false"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintTop_toBottomOf="@id/gl_circles_top"
+            app:layout_constraintBottom_toTopOf="@id/gl_circles_bottom"
+            app:layout_constraintStart_toEndOf="@id/gl_c1_start"
+            app:layout_constraintEnd_toStartOf="@id/gl_c1_end" />
+
+        <!-- Cercul 2 (Stânga 2 - gol) -->
+        <FrameLayout
+            android:id="@+id/circle_btn_2"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="@drawable/bg_ripple_circle"
+            android:clickable="false"
+            android:focusable="false"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintTop_toBottomOf="@id/gl_circles_top"
+            app:layout_constraintBottom_toTopOf="@id/gl_circles_bottom"
+            app:layout_constraintStart_toEndOf="@id/gl_c2_start"
+            app:layout_constraintEnd_toStartOf="@id/gl_c2_end" />
+
+        <!-- Cercul 3 (Stânga 3 - gol) -->
+        <FrameLayout
+            android:id="@+id/circle_btn_3"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="@drawable/bg_ripple_circle"
+            android:clickable="false"
+            android:focusable="false"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintTop_toBottomOf="@id/gl_circles_top"
+            app:layout_constraintBottom_toTopOf="@id/gl_circles_bottom"
+            app:layout_constraintStart_toEndOf="@id/gl_c3_start"
+            app:layout_constraintEnd_toStartOf="@id/gl_c3_end" />
+
+        <!-- Cercul 4 (Dreapta 1 - gol) -->
+        <FrameLayout
+            android:id="@+id/circle_btn_4"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="@drawable/bg_ripple_circle"
+            android:clickable="false"
+            android:focusable="false"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintTop_toBottomOf="@id/gl_circles_top"
+            app:layout_constraintBottom_toTopOf="@id/gl_circles_bottom"
+            app:layout_constraintStart_toEndOf="@id/gl_c4_start"
+            app:layout_constraintEnd_toStartOf="@id/gl_c4_end" />
+
+        <!-- Cercul 5 (Dreapta 2 - Toggle Day/Night) -->
+        <ImageView
+            android:id="@+id/btn_night_mode"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="@drawable/bg_ripple_circle"
+            android:clickable="true"
+            android:focusable="true"
+            android:nextFocusForward="@+id/btn_quick_settings"
+            android:padding="16dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_moon"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintTop_toBottomOf="@id/gl_circles_top"
+            app:layout_constraintBottom_toTopOf="@id/gl_circles_bottom"
+            app:layout_constraintStart_toEndOf="@id/gl_c5_start"
+            app:layout_constraintEnd_toStartOf="@id/gl_c5_end" />
+
+        <!-- Cercul 6 (Dreapta 3 - Setări) -->
+        <ImageView
+            android:id="@+id/btn_quick_settings"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="@drawable/bg_ripple_circle"
+            android:clickable="true"
+            android:focusable="true"
+            android:nextFocusForward="@+id/btn_left_1"
+            android:padding="16dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_settings_gear"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintTop_toBottomOf="@id/gl_circles_top"
+            app:layout_constraintBottom_toTopOf="@id/gl_circles_bottom"
+            app:layout_constraintStart_toEndOf="@id/gl_c6_start"
+            app:layout_constraintEnd_toStartOf="@id/gl_c6_end" />
+
+
+        <!-- ============================================================== -->
+        <!-- 7. CELE 3 BUTOANE MEDIA DIN BARA CENTRALĂ DE JOS                -->
+        <!-- (Y: 92.5% -> 99.0%, X: 40.0% -> 60.0%)                          -->
+        <!-- ============================================================== -->
+
+        <!-- PREV TRACK -->
+        <ImageView
+            android:id="@+id/btn_prev_track"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:padding="4dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_media_prev"
+            android:background="@drawable/bg_ripple_btn"
+            android:clickable="true"
+            android:focusable="true"
+            android:nextFocusForward="@+id/btn_play_pause"
+            app:layout_constraintTop_toBottomOf="@id/gl_media_bar_top"
+            app:layout_constraintBottom_toTopOf="@id/gl_media_bar_bottom"
+            app:layout_constraintStart_toEndOf="@id/gl_media_prev_start"
+            app:layout_constraintEnd_toStartOf="@id/gl_media_prev_end" />
+
+        <!-- PLAY / PAUSE -->
+        <ImageView
+            android:id="@+id/btn_play_pause"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:padding="4dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_media_play"
+            android:background="@drawable/bg_ripple_btn"
+            android:clickable="true"
+            android:focusable="true"
+            android:nextFocusForward="@+id/btn_next_track"
+            app:layout_constraintTop_toBottomOf="@id/gl_media_bar_top"
+            app:layout_constraintBottom_toTopOf="@id/gl_media_bar_bottom"
+            app:layout_constraintStart_toEndOf="@id/gl_media_play_start"
+            app:layout_constraintEnd_toStartOf="@id/gl_media_play_end" />
+
+        <!-- NEXT TRACK -->
+        <ImageView
+            android:id="@+id/btn_next_track"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:padding="4dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_media_next"
+            android:background="@drawable/bg_ripple_btn"
+            android:clickable="true"
+            android:focusable="true"
+            android:nextFocusForward="@+id/btn_right_3"
+            app:layout_constraintTop_toBottomOf="@id/gl_media_bar_top"
+            app:layout_constraintBottom_toTopOf="@id/gl_media_bar_bottom"
+            app:layout_constraintStart_toEndOf="@id/gl_media_next_start"
+            app:layout_constraintEnd_toStartOf="@id/gl_media_next_end" />
+            app:layout_constraintEnd_toStartOf="@id/gl_media_next_end" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- ============================================================== -->
+    <!-- 8. OVERLAY FULLSCREEN YOUTUBE                                  -->
+    <!-- ============================================================== -->
+    <LinearLayout
+        android:id="@+id/youtube_fullscreen_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="#FF0A0C10"
+        android:elevation="40dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:background="#FF141820"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp">
+
+            <TextView
+                android:id="@+id/btn_yt_back"
+                android:layout_width="wrap_content"
+                android:layout_height="34dp"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true"
+                android:gravity="center"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:background="@drawable/bg_nav_btn_focus"
+                android:text="◀ ÎNAPOI"
+                android:textColor="@color/bmw_white"
                 android:textSize="12sp"
                 android:textStyle="bold"
                 android:clickable="true"
                 android:focusable="true" />
 
             <TextView
-                android:id="@+id/bottom_plus_btn"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
-                android:text="+"
+                android:layout_centerInParent="true"
+                android:text="▶ YOUTUBE — Alege videoclipul (se va afișa în Cercul Central)"
                 android:textColor="@color/bmw_amber"
-                android:textSize="22sp"
-                android:textStyle="bold"
-                android:clickable="true"
-                android:focusable="true" />
-        </LinearLayout>
-
-        <!-- Bottom Center: Prev (<), Track Info (Title & Artist), Next (>) at SAME LEVEL -->
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:layout_centerInParent="true"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/btn_prev_track"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
-                android:gravity="center"
-                android:text="〈"
-                android:textColor="@color/color_nav_btn_text"
-                android:background="@drawable/bg_nav_btn_focus"
-                android:textSize="20sp"
-                android:textStyle="bold"
-                android:clickable="true"
-                android:focusable="true"
-                android:nextFocusLeft="@+id/btn_left_3"
-                android:nextFocusRight="@+id/btn_play_pause"
-                android:nextFocusUp="@+id/center_circle"
-                android:nextFocusDown="@+id/btn_prev_track" />
-
-            <TextView
-                android:id="@+id/btn_play_pause"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:layout_marginStart="12dp"
-                android:layout_marginEnd="12dp"
-                android:paddingStart="18dp"
-                android:paddingEnd="18dp"
-                android:gravity="center"
-                android:text="PLAY / PAUSE"
-                android:textColor="@color/color_nav_btn_text"
-                android:background="@drawable/bg_nav_btn_focus"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:letterSpacing="0.08"
-                android:clickable="true"
-                android:focusable="true"
-                android:nextFocusLeft="@+id/btn_prev_track"
-                android:nextFocusRight="@+id/btn_next_track"
-                android:nextFocusUp="@+id/center_circle"
-                android:nextFocusDown="@+id/btn_play_pause" />
-
-            <TextView
-                android:id="@+id/btn_next_track"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
-                android:gravity="center"
-                android:text="〉"
-                android:textColor="@color/color_nav_btn_text"
-                android:background="@drawable/bg_nav_btn_focus"
-                android:textSize="20sp"
-                android:textStyle="bold"
-                android:clickable="true"
-                android:focusable="true"
-                android:nextFocusLeft="@+id/btn_play_pause"
-                android:nextFocusRight="@+id/btn_right_3"
-                android:nextFocusUp="@+id/center_circle"
-                android:nextFocusDown="@+id/btn_next_track" />
-        </LinearLayout>
-
-        <!-- Bottom Right: Battery, Night Mode, Settings (BMW Amber) -->
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:layout_alignParentEnd="true"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/bottom_battery_icon"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="⚡ 74%"
-                android:textColor="@color/bmw_amber"
-                android:textSize="13sp"
+                android:textSize="12sp"
                 android:textStyle="bold" />
 
             <TextView
-                android:id="@+id/btn_night_mode"
-                android:layout_width="34dp"
+                android:id="@+id/btn_yt_dock_circle"
+                android:layout_width="wrap_content"
                 android:layout_height="34dp"
-                android:layout_marginStart="12dp"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
                 android:gravity="center"
-                android:text="🌙"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:background="@drawable/bg_speed_badge"
+                android:text="⬇ AFIȘEAZĂ ÎN CERC"
                 android:textColor="@color/bmw_amber"
-                android:background="@drawable/bg_nav_btn_focus"
-                android:textSize="18sp"
+                android:textSize="12sp"
+                android:textStyle="bold"
                 android:clickable="true"
                 android:focusable="true" />
+        </RelativeLayout>
 
-            <TextView
-                android:id="@+id/btn_quick_settings"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:layout_marginStart="8dp"
-                android:gravity="center"
-                android:text="⚙"
-                android:textColor="@color/bmw_amber"
-                android:textSize="20sp"
-                android:clickable="true"
-                android:focusable="true" />
-        </LinearLayout>
-    </RelativeLayout>
+        <FrameLayout
+            android:id="@+id/youtube_fullscreen_container"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+    </LinearLayout>
 
     <!-- ============================================================== -->
-    <!-- 3. MAIN CLUSTER: 3 BANDS LEFT, GAUGE RING CENTER, 3 BANDS RIGHT-->
+    <!-- 9. FEREASTRĂ APEL TELEFONIC (HALF-SCREEN CALL OVERLAY)          -->
+    <!-- Afișată peste interfață fără să deschidă dialerul de sistem    -->
     <!-- ============================================================== -->
-    <RelativeLayout
-        android:id="@+id/content_row"
+    <!-- Fereastră Contacte Favorite (Overlay similar cu Fereastra de Apel) -->
+    <FrameLayout
+        android:id="@+id/favorites_overlay_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_below="@id/top_bar"
-        android:layout_above="@id/bottom_bar"
-        android:clipChildren="false"
-        android:clipToPadding="false">
+        android:background="#99000000"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- 3.1 HORIZONTAL COLUMNS (50% LEFT, 50% RIGHT) -->
-        <LinearLayout
-            android:id="@+id/columns_container"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="horizontal"
-            android:baselineAligned="false">
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="540dp"
+            android:layout_height="340dp"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_call_panel"
+            android:padding="20dp"
+            android:clickable="true"
+            android:focusable="true">
 
-            <!-- LEFT COLUMN: 3 BANDS SEGMENTATE MASIVE -->
-            <LinearLayout
-                android:id="@+id/left_column"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:orientation="vertical">
+            <!-- Titlu Header -->
+            <TextView
+                android:id="@+id/fav_header_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="★ CONTACTE FAVORITE"
+                android:textColor="@color/bmw_amber"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.08"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintStart_toStartOf="parent" />
 
-                <!-- BAND L1: RADIO -->
-                <com.bmw.carlauncher.AgamaBandButton
-                    android:id="@+id/btn_left_1"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    app:isRightSide="false"
-                    app:bandPosition="0"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:nextFocusUp="@+id/btn_vol_down"
-                    android:nextFocusDown="@+id/btn_left_2"
-                    android:nextFocusLeft="@+id/btn_left_1"
-                    android:nextFocusRight="@+id/center_circle">
-
-                    <TextView
-                        android:id="@+id/label_left_1"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="start|center_vertical"
-                        android:layout_marginStart="36dp"
-                        android:text="RADIO"
-                        android:textColor="@color/bmw_white"
-                        android:textSize="17sp"
-                        android:textStyle="bold"
-                        android:letterSpacing="0.06" />
-
-                    <View
-                        android:layout_width="90dp"
-                        android:layout_height="3.5dp"
-                        android:layout_gravity="start|center_vertical"
-                        android:layout_marginStart="36dp"
-                        android:layout_marginTop="20dp"
-                        android:background="@drawable/bg_amber_led_slot" />
-
-                    <ImageView
-                        android:id="@+id/icon_left_1"
-                        android:layout_width="28dp"
-                        android:layout_height="28dp"
-                        android:layout_gravity="start|center_vertical"
-                        android:layout_marginStart="140dp"
-                        android:src="@drawable/ic_gauge_radio"
-                        android:scaleType="fitCenter" />
-                </com.bmw.carlauncher.AgamaBandButton>
-
-                <!-- BAND L2: NAVI -->
-                <com.bmw.carlauncher.AgamaBandButton
-                    android:id="@+id/btn_left_2"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    app:isRightSide="false"
-                    app:bandPosition="1"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:nextFocusUp="@+id/btn_left_1"
-                    android:nextFocusDown="@+id/btn_left_3"
-                    android:nextFocusLeft="@+id/btn_left_2"
-                    android:nextFocusRight="@+id/center_circle">
-
-                    <TextView
-                        android:id="@+id/label_left_2"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="start|center_vertical"
-                        android:layout_marginStart="36dp"
-                        android:text="NAVI"
-                        android:textColor="@color/bmw_white"
-                        android:textSize="17sp"
-                        android:textStyle="bold"
-                        android:letterSpacing="0.06" />
-
-                    <View
-                        android:layout_width="90dp"
-                        android:layout_height="3.5dp"
-                        android:layout_gravity="start|center_vertical"
-                        android:layout_marginStart="36dp"
-                        android:layout_marginTop="20dp"
-                        android:background="@drawable/bg_amber_led_slot" />
-
-                    <ImageView
-                        android:id="@+id/icon_left_2"
-                        android:layout_width="28dp"
-                        android:layout_height="28dp"
-                        android:layout_gravity="start|center_vertical"
-                        android:layout_marginStart="140dp"
-                        android:src="@drawable/ic_gauge_navi"
-                        android:scaleType="fitCenter" />
-                </com.bmw.carlauncher.AgamaBandButton>
-
-                <!-- BAND L3: MUSIC -->
-                <com.bmw.carlauncher.AgamaBandButton
-                    android:id="@+id/btn_left_3"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    app:isRightSide="false"
-                    app:bandPosition="2"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:nextFocusUp="@+id/btn_left_2"
-                    android:nextFocusDown="@+id/btn_prev_track"
-                    android:nextFocusLeft="@+id/btn_left_3"
-                    android:nextFocusRight="@+id/center_circle">
-
-                    <TextView
-                        android:id="@+id/label_left_3"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="start|center_vertical"
-                        android:layout_marginStart="36dp"
-                        android:text="MUSIC"
-                        android:textColor="@color/bmw_white"
-                        android:textSize="17sp"
-                        android:textStyle="bold"
-                        android:letterSpacing="0.06" />
-
-                    <View
-                        android:layout_width="90dp"
-                        android:layout_height="3.5dp"
-                        android:layout_gravity="start|center_vertical"
-                        android:layout_marginStart="36dp"
-                        android:layout_marginTop="20dp"
-                        android:background="@drawable/bg_amber_led_slot" />
-
-                    <ImageView
-                        android:id="@+id/icon_left_3"
-                        android:layout_width="28dp"
-                        android:layout_height="28dp"
-                        android:layout_gravity="start|center_vertical"
-                        android:layout_marginStart="140dp"
-                        android:src="@drawable/ic_gauge_music"
-                        android:scaleType="fitCenter" />
-                </com.bmw.carlauncher.AgamaBandButton>
-            </LinearLayout>
-
-            <!-- RIGHT COLUMN: 3 BANDS SEGMENTATE MASIVE -->
-            <LinearLayout
-                android:id="@+id/right_column"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:orientation="vertical">
-
-                <!-- BAND R1: PHONE -->
-                <com.bmw.carlauncher.AgamaBandButton
-                    android:id="@+id/btn_right_1"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    app:isRightSide="true"
-                    app:bandPosition="0"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:nextFocusUp="@+id/btn_vol_up"
-                    android:nextFocusDown="@+id/btn_right_2"
-                    android:nextFocusLeft="@+id/center_circle"
-                    android:nextFocusRight="@+id/btn_right_1">
-
-                    <ImageView
-                        android:id="@+id/icon_right_1"
-                        android:layout_width="28dp"
-                        android:layout_height="28dp"
-                        android:layout_gravity="end|center_vertical"
-                        android:layout_marginEnd="140dp"
-                        android:src="@drawable/ic_gauge_phone"
-                        android:scaleType="fitCenter" />
-
-                    <View
-                        android:layout_width="90dp"
-                        android:layout_height="3.5dp"
-                        android:layout_gravity="end|center_vertical"
-                        android:layout_marginEnd="36dp"
-                        android:layout_marginTop="20dp"
-                        android:background="@drawable/bg_amber_led_slot" />
-
-                    <TextView
-                        android:id="@+id/label_right_1"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="end|center_vertical"
-                        android:layout_marginEnd="36dp"
-                        android:text="PHONE"
-                        android:textColor="@color/bmw_white"
-                        android:textSize="17sp"
-                        android:textStyle="bold"
-                        android:letterSpacing="0.06" />
-                </com.bmw.carlauncher.AgamaBandButton>
-
-                <!-- BAND R2: INTERNET -->
-                <com.bmw.carlauncher.AgamaBandButton
-                    android:id="@+id/btn_right_2"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    app:isRightSide="true"
-                    app:bandPosition="1"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:nextFocusUp="@+id/btn_right_1"
-                    android:nextFocusDown="@+id/btn_right_3"
-                    android:nextFocusLeft="@+id/center_circle"
-                    android:nextFocusRight="@+id/btn_right_2">
-
-                    <ImageView
-                        android:id="@+id/icon_right_2"
-                        android:layout_width="28dp"
-                        android:layout_height="28dp"
-                        android:layout_gravity="end|center_vertical"
-                        android:layout_marginEnd="140dp"
-                        android:src="@drawable/ic_gauge_globe"
-                        android:scaleType="fitCenter" />
-
-                    <View
-                        android:layout_width="90dp"
-                        android:layout_height="3.5dp"
-                        android:layout_gravity="end|center_vertical"
-                        android:layout_marginEnd="36dp"
-                        android:layout_marginTop="20dp"
-                        android:background="@drawable/bg_amber_led_slot" />
-
-                    <TextView
-                        android:id="@+id/label_right_2"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="end|center_vertical"
-                        android:layout_marginEnd="36dp"
-                        android:text="INTERNET"
-                        android:textColor="@color/bmw_white"
-                        android:textSize="17sp"
-                        android:textStyle="bold"
-                        android:letterSpacing="0.06" />
-                </com.bmw.carlauncher.AgamaBandButton>
-
-                <!-- BAND R3: APPS -->
-                <com.bmw.carlauncher.AgamaBandButton
-                    android:id="@+id/btn_right_3"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    app:isRightSide="true"
-                    app:bandPosition="2"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:nextFocusUp="@+id/btn_right_2"
-                    android:nextFocusDown="@+id/btn_next_track"
-                    android:nextFocusLeft="@+id/center_circle"
-                    android:nextFocusRight="@+id/btn_right_3">
-
-                    <ImageView
-                        android:id="@+id/icon_right_3"
-                        android:layout_width="28dp"
-                        android:layout_height="28dp"
-                        android:layout_gravity="end|center_vertical"
-                        android:layout_marginEnd="140dp"
-                        android:src="@drawable/ic_gauge_apps"
-                        android:scaleType="fitCenter" />
-
-                    <View
-                        android:layout_width="90dp"
-                        android:layout_height="3.5dp"
-                        android:layout_gravity="end|center_vertical"
-                        android:layout_marginEnd="36dp"
-                        android:layout_marginTop="20dp"
-                        android:background="@drawable/bg_amber_led_slot" />
-
-                    <TextView
-                        android:id="@+id/label_right_3"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="end|center_vertical"
-                        android:layout_marginEnd="36dp"
-                        android:text="APPS"
-                        android:textColor="@color/bmw_white"
-                        android:textSize="17sp"
-                        android:textStyle="bold"
-                        android:letterSpacing="0.06" />
-                </com.bmw.carlauncher.AgamaBandButton>
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- 3.2 CENTER DIAL: SOLID CHROME 3D BEZEL WITH FULL BMW BADGE / MODES -->
-        <FrameLayout
-            android:id="@+id/center_wrapper"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_centerInParent="true"
-            android:clipChildren="false">
-
-            <!-- Central Bezel & Display Core (Centered, fills circle) -->
-            <FrameLayout
-                android:id="@+id/center_circle"
-                android:layout_width="230dp"
-                android:layout_height="230dp"
-                android:layout_gravity="center"
-                android:background="@drawable/bg_center_circle_selector"
+            <!-- Buton Deschide Dialer (Tastatură numerică standard) -->
+            <TextView
+                android:id="@+id/btn_open_dialer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="TASTATURĂ"
+                android:textColor="@color/bmw_white"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="5dp"
+                android:paddingBottom="5dp"
+                android:background="@drawable/bg_panel_action_btn"
+                android:layout_marginEnd="16dp"
                 android:clickable="true"
                 android:focusable="true"
-                android:nextFocusUp="@+id/btn_vol_down"
-                android:nextFocusDown="@+id/btn_play_pause"
-                android:nextFocusLeft="@+id/btn_left_2"
-                android:nextFocusRight="@+id/btn_right_2">
+                android:focusableInTouchMode="true"
+                app:layout_constraintTop_toTopOf="@id/fav_header_title"
+                app:layout_constraintBottom_toBottomOf="@id/fav_header_title"
+                app:layout_constraintEnd_toStartOf="@id/btn_close_favorites" />
 
-                <!-- Inner Core Content Container (Fills circle completely right to bezel) -->
-                <FrameLayout
-                    android:id="@+id/center_core_container"
+            <!-- Buton Închidere (X) -->
+            <ImageView
+                android:id="@+id/btn_close_favorites"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:padding="6dp"
+                android:src="@drawable/ic_close"
+                android:background="@drawable/bg_close_btn_selector"
+                android:tint="@color/selector_close_btn_tint"
+                app:tint="@color/selector_close_btn_tint"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusDown="@id/list_favorite_contacts"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintEnd_toEndOf="parent" />
+
+            <!-- Separator -->
+            <View
+                android:id="@+id/fav_divider"
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="12dp"
+                android:background="#33FFAA00"
+                app:layout_constraintTop_toBottomOf="@id/fav_header_title" />
+
+            <!-- Listă Contacte Favorite -->
+            <ListView
+                android:id="@+id/list_favorite_contacts"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="8dp"
+                android:divider="#1AFFFFFF"
+                android:dividerHeight="1dp"
+                android:scrollbars="vertical"
+                android:descendantFocusability="afterDescendants"
+                app:layout_constraintTop_toBottomOf="@id/fav_divider"
+                app:layout_constraintBottom_toBottomOf="parent" />
+
+            <!-- Mesaj dacă nu există contacte -->
+            <TextView
+                android:id="@+id/tv_empty_favorites"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Nu s-au găsit contacte în agendă."
+                android:textColor="#888888"
+                android:textSize="14sp"
+                android:visibility="gone"
+                app:layout_constraintTop_toBottomOf="@id/fav_divider"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </FrameLayout>
+
+    <!-- Fereastră Posturi Radio (BMW Half-Screen Overlay) -->
+    <FrameLayout
+        android:id="@+id/radio_overlay_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#99000000"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="540dp"
+            android:layout_height="340dp"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_call_panel"
+            android:padding="20dp"
+            android:clickable="true"
+            android:focusable="true">
+
+            <TextView
+                android:id="@+id/radio_header_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📻 POSTURI RADIO"
+                android:textColor="@color/bmw_amber"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.08"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintStart_toStartOf="parent" />
+
+            <TextView
+                android:id="@+id/btn_add_station"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="+ ADAUGĂ POST"
+                android:textColor="@color/bmw_white"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="5dp"
+                android:paddingBottom="5dp"
+                android:background="@drawable/bg_panel_action_btn"
+                android:layout_marginEnd="16dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                app:layout_constraintTop_toTopOf="@id/radio_header_title"
+                app:layout_constraintBottom_toBottomOf="@id/radio_header_title"
+                app:layout_constraintEnd_toStartOf="@id/btn_close_radio" />
+
+            <ImageView
+                android:id="@+id/btn_close_radio"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:padding="6dp"
+                android:src="@drawable/ic_close"
+                android:background="@drawable/bg_close_btn_selector"
+                android:tint="@color/selector_close_btn_tint"
+                app:tint="@color/selector_close_btn_tint"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusDown="@id/list_radio_stations"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintEnd_toEndOf="parent" />
+
+            <View
+                android:id="@+id/radio_divider"
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="12dp"
+                android:background="#33FFAA00"
+                app:layout_constraintTop_toBottomOf="@id/radio_header_title" />
+
+            <ListView
+                android:id="@+id/list_radio_stations"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="8dp"
+                android:divider="#1AFFFFFF"
+                android:dividerHeight="1dp"
+                android:scrollbars="vertical"
+                android:descendantFocusability="afterDescendants"
+                app:layout_constraintTop_toBottomOf="@id/radio_divider"
+                app:layout_constraintBottom_toBottomOf="parent" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </FrameLayout>
+
+    <!-- Fereastră Aplicații Muzică (BMW Half-Screen Overlay) -->
+    <FrameLayout
+        android:id="@+id/music_overlay_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#99000000"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="540dp"
+            android:layout_height="340dp"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_call_panel"
+            android:padding="20dp"
+            android:clickable="true"
+            android:focusable="true">
+
+            <TextView
+                android:id="@+id/music_header_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🎵 APLICAȚII MUZICĂ"
+                android:textColor="@color/bmw_amber"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.08"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintStart_toStartOf="parent" />
+
+            <ImageView
+                android:id="@+id/btn_close_music"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:padding="6dp"
+                android:src="@drawable/ic_close"
+                android:background="@drawable/bg_close_btn_selector"
+                android:tint="@color/selector_close_btn_tint"
+                app:tint="@color/selector_close_btn_tint"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusDown="@id/list_music_apps"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintEnd_toEndOf="parent" />
+
+            <View
+                android:id="@+id/music_divider"
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="12dp"
+                android:background="#33FFAA00"
+                app:layout_constraintTop_toBottomOf="@id/music_header_title" />
+
+            <ListView
+                android:id="@+id/list_music_apps"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="8dp"
+                android:divider="#1AFFFFFF"
+                android:dividerHeight="1dp"
+                android:descendantFocusability="afterDescendants"
+                app:layout_constraintTop_toBottomOf="@id/music_divider"
+                app:layout_constraintBottom_toBottomOf="parent" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </FrameLayout>
+
+    <!-- Fereastră Toate Aplicațiile (BMW Half-Screen Overlay) -->
+    <FrameLayout
+        android:id="@+id/apps_overlay_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#99000000"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="540dp"
+            android:layout_height="340dp"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_call_panel"
+            android:padding="20dp"
+            android:clickable="true"
+            android:focusable="true">
+
+            <TextView
+                android:id="@+id/apps_header_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="▦ TOATE APLICAȚIILE"
+                android:textColor="@color/bmw_amber"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.08"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintStart_toStartOf="parent" />
+
+            <ImageView
+                android:id="@+id/btn_close_apps"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:padding="6dp"
+                android:src="@drawable/ic_close"
+                android:background="@drawable/bg_close_btn_selector"
+                android:tint="@color/selector_close_btn_tint"
+                app:tint="@color/selector_close_btn_tint"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusDown="@id/grid_all_apps"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintEnd_toEndOf="parent" />
+
+            <View
+                android:id="@+id/apps_divider"
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="12dp"
+                android:background="#33FFAA00"
+                app:layout_constraintTop_toBottomOf="@id/apps_header_title" />
+
+            <GridView
+                android:id="@+id/grid_all_apps"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="8dp"
+                android:numColumns="4"
+                android:verticalSpacing="8dp"
+                android:horizontalSpacing="8dp"
+                android:scrollbars="vertical"
+                android:descendantFocusability="afterDescendants"
+                app:layout_constraintTop_toBottomOf="@id/apps_divider"
+                app:layout_constraintBottom_toBottomOf="parent" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </FrameLayout>
+
+    <!-- Fereastră Apel Telefonic (Half-Screen Overlay) -->
+    <FrameLayout
+        android:id="@+id/call_overlay_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#A6000000"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="520dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_call_panel"
+            android:padding="24dp">
+
+            <!-- Titlu status apel -->
+            <TextView
+                android:id="@+id/call_status_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⚡ APEL DE INTRARE"
+                android:textColor="@color/bmw_amber"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.1"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintStart_toStartOf="parent" />
+
+            <TextView
+                android:id="@+id/call_duration_timer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="00:00"
+                android:textColor="@color/bmw_white"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:visibility="gone"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintEnd_toEndOf="parent" />
+
+            <!-- Zona Poza Contact + Nume & Numar -->
+            <FrameLayout
+                android:id="@+id/call_photo_frame"
+                android:layout_width="74dp"
+                android:layout_height="74dp"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/bg_circle_photo"
+                android:foreground="@drawable/bg_circle_photo_border"
+                android:padding="2dp"
+                app:layout_constraintTop_toBottomOf="@id/call_status_title"
+                app:layout_constraintStart_toStartOf="parent">
+
+                <ImageView
+                    android:id="@+id/call_contact_photo"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:layout_margin="7dp">
-
-                    <!-- 0. VIZUALIZARE SIGLĂ OFICIALĂ 3D BMW (UMPLE TOT CERCUL) -->
-                    <FrameLayout
-                        android:id="@+id/view_center_bmw"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:visibility="visible">
-
-                        <ImageView
-                            android:id="@+id/center_bmw_badge"
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:layout_gravity="center"
-                            android:src="@drawable/bmw_logo"
-                            android:scaleType="fitCenter" />
-                    </FrameLayout>
-
-                    <!-- 1. VIZUALIZARE RADIO -->
-                    <LinearLayout
-                        android:id="@+id/view_center_radio"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:gravity="center"
-                        android:orientation="vertical"
-                        android:visibility="gone">
-
-                        <ImageView
-                            android:id="@+id/center_radio_art"
-                            android:layout_width="56dp"
-                            android:layout_height="56dp"
-                            android:scaleType="centerCrop"
-                            android:layout_marginBottom="4dp" />
-
-                        <TextView
-                            android:id="@+id/center_radio_title"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="BMW RADIO"
-                            android:textColor="@color/bmw_white"
-                            android:textSize="15sp"
-                            android:textStyle="bold"
-                            android:letterSpacing="0.06"
-                            android:maxLines="1" />
-
-                        <TextView
-                            android:id="@+id/center_radio_sub"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="Classic Rock"
-                            android:textColor="@color/bmw_amber"
-                            android:textSize="11sp"
-                            android:maxLines="1" />
-
-                        <TextView
-                            android:id="@+id/center_radio_status"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp"
-                            android:text="▶ PLAYING"
-                            android:textColor="@color/bmw_amber_light"
-                            android:textSize="10sp"
-                            android:textStyle="bold" />
-                    </LinearLayout>
-
-                    <!-- 2. VIZUALIZARE WAZE DIRECTIONS -->
-                    <LinearLayout
-                        android:id="@+id/view_center_waze"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:gravity="center"
-                        android:orientation="vertical"
-                        android:visibility="gone">
-
-                        <TextView
-                            android:id="@+id/center_waze_icon"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="↱"
-                            android:textColor="@color/bmw_amber"
-                            android:textSize="38sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:id="@+id/center_waze_distance"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="350 m"
-                            android:textColor="@color/bmw_white"
-                            android:textSize="18sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:id="@+id/center_waze_road"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="Bulevardul Unirii"
-                            android:textColor="@color/bmw_amber_light"
-                            android:textSize="11sp"
-                            android:maxLines="1" />
-
-                        <TextView
-                            android:id="@+id/center_waze_eta"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="ETA: 14:25 • 4.2 km"
-                            android:textColor="@color/bmw_gray_text"
-                            android:textSize="10sp" />
-                    </LinearLayout>
-
-                    <!-- 3. VIZUALIZARE VITEZOMETRU GPS -->
-                    <LinearLayout
-                        android:id="@+id/view_center_speedo"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:gravity="center"
-                        android:orientation="vertical"
-                        android:visibility="gone">
-
-                        <TextView
-                            android:id="@+id/center_speed_value"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="0"
-                            android:textColor="@color/bmw_amber"
-                            android:textSize="46sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:id="@+id/center_speed_unit"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="KM/H"
-                            android:textColor="@color/bmw_white"
-                            android:textSize="12sp"
-                            android:textStyle="bold"
-                            android:letterSpacing="0.1" />
-
-                        <TextView
-                            android:id="@+id/center_speed_sub"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="GPS READY"
-                            android:textColor="@color/bmw_gray_text"
-                            android:textSize="9sp" />
-                    </LinearLayout>
-
-                    <!-- 4. VIZUALIZARE YOUTUBE MUSIC / VIDEO PLAYER EXTERIOR -->
-                    <FrameLayout
-                        android:id="@+id/view_center_media"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:background="@drawable/bg_circle_clip"
-                        android:clipToOutline="true"
-                        android:visibility="gone">
-
-                        <ImageView
-                            android:id="@+id/center_media_thumbnail"
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:scaleType="centerCrop" />
-
-                        <View
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:background="@drawable/bg_media_overlay_scrim" />
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:gravity="center"
-                            android:orientation="vertical"
-                            android:padding="16dp">
-
-                            <TextView
-                                android:id="@+id/center_media_source"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="▶ YOUTUBE MUSIC"
-                                android:textColor="@color/bmw_amber"
-                                android:textSize="11sp"
-                                android:textStyle="bold"
-                                android:letterSpacing="0.08" />
-
-                            <TextView
-                                android:id="@+id/center_media_title"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="4dp"
-                                android:gravity="center"
-                                android:text="YouTube Music"
-                                android:textColor="@color/bmw_white"
-                                android:textSize="14sp"
-                                android:textStyle="bold"
-                                android:maxLines="2"
-                                android:ellipsize="end" />
-
-                            <TextView
-                                android:id="@+id/center_media_artist"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:gravity="center"
-                                android:text="Redare activă"
-                                android:textColor="@color/bmw_amber_light"
-                                android:textSize="12sp"
-                                android:maxLines="1"
-                                android:ellipsize="end" />
-                        </LinearLayout>
-                    </FrameLayout>
-
-                    <!-- 5. VIZUALIZARE HARTĂ GPS CIRCULARĂ LIVE (OSMDROID DARK MODE) -->
-                    <FrameLayout
-                        android:id="@+id/view_center_map"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:background="@drawable/bg_circle_clip"
-                        android:clipToOutline="true"
-                        android:visibility="gone">
-
-                        <org.osmdroid.views.MapView
-                            android:id="@+id/center_map_view"
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent" />
-
-                        <!-- Vignette shadow around circular edge for depth -->
-                        <View
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:background="@drawable/bg_map_vignette" />
-
-                        <!-- Top badge: KM/H speed -->
-                        <LinearLayout
-                            android:id="@+id/map_speed_badge"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_gravity="top|center_horizontal"
-                            android:layout_marginTop="16dp"
-                            android:orientation="horizontal"
-                            android:gravity="center"
-                            android:paddingStart="10dp"
-                            android:paddingEnd="10dp"
-                            android:paddingTop="3dp"
-                            android:paddingBottom="3dp"
-                            android:background="@drawable/bg_speed_badge">
-
-                            <TextView
-                                android:id="@+id/map_speed_text"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="0"
-                                android:textColor="@color/bmw_amber"
-                                android:textSize="14sp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="3dp"
-                                android:text="km/h"
-                                android:textColor="@color/bmw_white"
-                                android:textSize="10sp"
-                                android:textStyle="bold" />
-                        </LinearLayout>
-                    </FrameLayout>
-                </FrameLayout>
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/ic_call_avatar" />
             </FrameLayout>
-        </FrameLayout>
-    </RelativeLayout>
 
-</RelativeLayout>
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="18dp"
+                android:orientation="vertical"
+                app:layout_constraintTop_toTopOf="@id/call_photo_frame"
+                app:layout_constraintBottom_toBottomOf="@id/call_photo_frame"
+                app:layout_constraintStart_toEndOf="@id/call_photo_frame"
+                app:layout_constraintEnd_toEndOf="parent">
 
+                <TextView
+                    android:id="@+id/call_contact_name"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Număr Necunoscut"
+                    android:textColor="@color/bmw_white"
+                    android:textSize="22sp"
+                    android:textStyle="bold"
+                    android:singleLine="true"
+                    android:ellipsize="marquee"
+                    android:marqueeRepeatLimit="marquee_forever" />
+
+                <TextView
+                    android:id="@+id/call_phone_number"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="+40 7xx xxx xxx"
+                    android:textColor="@color/bmw_amber"
+                    android:textSize="15sp"
+                    android:singleLine="true" />
+            </LinearLayout>
+
+            <!-- Butoane apel de intrare: DENY & ANSWER -->
+            <LinearLayout
+                android:id="@+id/call_ringing_actions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:orientation="horizontal"
+                android:gravity="center"
+                app:layout_constraintTop_toBottomOf="@id/call_photo_frame"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent">
+
+                <!-- Buton Respinge (DENY) -->
+                <LinearLayout
+                    android:id="@+id/btn_call_deny"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="10dp"
+                    android:background="@drawable/bg_call_btn_deny"
+                    android:gravity="center"
+                    android:orientation="horizontal"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <ImageView
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:src="@drawable/ic_call_end" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:text="RESPINGE"
+                        android:textColor="@color/bmw_white"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- Buton Raspunde (ANSWER) -->
+                <LinearLayout
+                    android:id="@+id/btn_call_answer"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="10dp"
+                    android:background="@drawable/bg_call_btn_answer"
+                    android:gravity="center"
+                    android:orientation="horizontal"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <ImageView
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:src="@drawable/ic_call_answer" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:text="RĂSPUNDE"
+                        android:textColor="@color/bmw_white"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Buton Încheiere Apel (HANG UP - când apelul e activ) -->
+            <LinearLayout
+                android:id="@+id/btn_call_hangup"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="24dp"
+                android:background="@drawable/bg_call_btn_deny"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:visibility="gone"
+                android:clickable="true"
+                android:focusable="true"
+                app:layout_constraintTop_toBottomOf="@id/call_photo_frame"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent">
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:src="@drawable/ic_call_end" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="ÎNCHEIE APELUL"
+                    android:textColor="@color/bmw_white"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </FrameLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

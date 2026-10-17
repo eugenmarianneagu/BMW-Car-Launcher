@@ -3,5 +3,6 @@
     <declare-styleable name="AgamaBandButton">
         <attr name="isRightSide" format="boolean" />
         <attr name="bandPosition" format="integer" />
+        <attr name="buttonMask" format="reference" />
     </declare-styleable>
 </resources>
