@@ -36,6 +36,7 @@ import android.provider.ContactsContract
 import android.provider.Settings
 import android.app.role.RoleManager
 import android.telecom.TelecomManager
+import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -91,6 +92,11 @@ import org.maplibre.android.maps.Style
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import android.speech.tts.TextToSpeech
+import android.widget.ImageButton
+import com.bmw.carlauncher.notification.CarNotification
+import com.bmw.carlauncher.notification.CarNotificationHub
+import com.bmw.carlauncher.notification.CarNotificationListenerService
 
 class MainActivity : AppCompatActivity() {
 
@@ -128,7 +134,7 @@ class MainActivity : AppCompatActivity() {
     )
 
     enum class CenterMode {
-        BMW, MEDIA, RADIO, MAP, ENERGY
+        BMW, MEDIA, RADIO, MAP, ENERGY, NOTIFICATION
     }
 
     private var currentMode = CenterMode.BMW
@@ -237,6 +243,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Car Notification Center View UI
+    private lateinit var viewCenterNotification: RelativeLayout
+    private lateinit var ivNotifAppIcon: ImageView
+    private lateinit var tvNotifAppName: TextView
+    private lateinit var tvNotifTime: TextView
+    private lateinit var btnNotifClose: ImageButton
+    private lateinit var tvNotifSender: TextView
+    private lateinit var layoutNotifVoiceBadge: LinearLayout
+    private lateinit var tvNotifVoiceLabel: TextView
+    private lateinit var tvNotifText: TextView
+    private lateinit var btnNotifAction: LinearLayout
+    private lateinit var ivNotifActionIcon: ImageView
+    private lateinit var tvNotifActionText: TextView
+    private lateinit var btnNotifSpeak: LinearLayout
+    private var activeNotification: CarNotification? = null
+    private var preNotificationMode: CenterMode = CenterMode.BMW
+    private val notifDismissHandler = Handler(Looper.getMainLooper())
+    private val notifDismissRunnable = Runnable { dismissNotification() }
+    private var textToSpeech: TextToSpeech? = null
+
     // Favorites Overlay UI
     private lateinit var favoritesOverlayContainer: FrameLayout
     private lateinit var btnCloseFavorites: ImageView
@@ -267,6 +293,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var seekNightBrightness: SeekBar
     private lateinit var tvDayBrightnessVal: TextView
     private lateinit var tvNightBrightnessVal: TextView
+    private lateinit var btnOpenNotifSettings: LinearLayout
+    private lateinit var tvNotifAccessStatus: TextView
 
     // Incoming / In-Call Overlay UI
     private lateinit var callOverlayContainer: FrameLayout
@@ -542,6 +570,63 @@ class MainActivity : AppCompatActivity() {
         tvEnergyBatteryVoltage = findViewById(R.id.tv_energy_battery_voltage)
         tvEnergyBatteryPower = findViewById(R.id.tv_energy_battery_power)
 
+        // Notification View
+        viewCenterNotification = findViewById(R.id.view_center_notification)
+        viewCenterNotification.outlineProvider = circleOutlineProvider
+        viewCenterNotification.clipToOutline = true
+        ivNotifAppIcon = findViewById(R.id.iv_notif_app_icon)
+        tvNotifAppName = findViewById(R.id.tv_notif_app_name)
+        tvNotifTime = findViewById(R.id.tv_notif_time)
+        btnNotifClose = findViewById(R.id.btn_notif_close)
+        tvNotifSender = findViewById(R.id.tv_notif_sender)
+        layoutNotifVoiceBadge = findViewById(R.id.layout_notif_voice_badge)
+        tvNotifVoiceLabel = findViewById(R.id.tv_notif_voice_label)
+        tvNotifText = findViewById(R.id.tv_notif_text)
+        btnNotifAction = findViewById(R.id.btn_notif_action)
+        ivNotifActionIcon = findViewById(R.id.iv_notif_action_icon)
+        tvNotifActionText = findViewById(R.id.tv_notif_action_text)
+        btnNotifSpeak = findViewById(R.id.btn_notif_speak)
+
+        btnNotifClose.setOnClickListener {
+            dismissNotification()
+        }
+
+        viewCenterNotification.setOnClickListener {
+            dismissNotification()
+        }
+
+        btnNotifAction.setOnClickListener {
+            val notif = activeNotification ?: return@setOnClickListener
+            notifDismissHandler.removeCallbacks(notifDismissRunnable)
+            try {
+                if (notif.contentIntent != null) {
+                    notif.contentIntent.send()
+                } else {
+                    val launchIntent = packageManager.getLaunchIntentForPackage(notif.packageName)
+                    if (launchIntent != null) {
+                        startActivity(launchIntent)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Eroare la deschiderea notificarii: ${e.message}")
+            }
+        }
+
+        btnNotifSpeak.setOnClickListener {
+            val notif = activeNotification ?: return@setOnClickListener
+            notifDismissHandler.removeCallbacks(notifDismissRunnable)
+            speakNotification(notif)
+        }
+
+        // Initializare Text to Speech
+        initTextToSpeech()
+
+        // Abonare la evenimentele de notificare
+        CarNotificationHub.onNotificationReceived = { notif ->
+            displayNotification(notif)
+        }
+        handleNotificationTestIntent(intent)
+
         // Inițializare Fereastră Contacte Favorite (Half-Screen Overlay)
         favoritesOverlayContainer = findViewById(R.id.favorites_overlay_container)
         btnCloseFavorites = findViewById(R.id.btn_close_favorites)
@@ -618,6 +703,8 @@ class MainActivity : AppCompatActivity() {
         seekNightBrightness = findViewById(R.id.seek_night_brightness)
         tvDayBrightnessVal = findViewById(R.id.tv_day_brightness_val)
         tvNightBrightnessVal = findViewById(R.id.tv_night_brightness_val)
+        btnOpenNotifSettings = findViewById(R.id.btn_open_notif_settings)
+        tvNotifAccessStatus = findViewById(R.id.tv_notif_access_status)
 
         initSettingsOverlay()
 
@@ -1424,6 +1511,7 @@ class MainActivity : AppCompatActivity() {
         CenterMode.RADIO -> viewCenterRadio
         CenterMode.MAP -> viewCenterMap
         CenterMode.ENERGY -> viewCenterEnergy
+        CenterMode.NOTIFICATION -> viewCenterNotification
     }
 
     private fun cycleCenterMode() {
@@ -1434,6 +1522,7 @@ class MainActivity : AppCompatActivity() {
             CenterMode.RADIO -> CenterMode.MAP
             CenterMode.MAP -> CenterMode.ENERGY
             CenterMode.ENERGY -> CenterMode.BMW
+            CenterMode.NOTIFICATION -> preNotificationMode
         }
         updateCenterModeUI(animateFrom = previousMode)
 
@@ -2004,6 +2093,14 @@ class MainActivity : AppCompatActivity() {
             settingsOverlayContainer.visibility = View.GONE
             focusPlayPauseButton()
         }
+
+        btnOpenNotifSettings.setOnClickListener {
+            try {
+                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            } catch (e: Exception) {
+                Toast.makeText(this, "Deschide Setări -> Notificări", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun showSettingsOverlay() {
@@ -2017,6 +2114,10 @@ class MainActivity : AppCompatActivity() {
 
         seekNightBrightness.progress = nightBrightness
         tvNightBrightnessVal.text = "$nightBrightness%"
+
+        val isGranted = CarNotificationListenerService.isNotificationAccessGranted(this)
+        tvNotifAccessStatus.text = if (isGranted) "Activat (WhatsApp / SMS activ)" else "Inactiv • Apasă pentru configurare"
+        tvNotifAccessStatus.setTextColor(ContextCompat.getColor(this, if (isGranted) R.color.bmw_amber else R.color.bmw_gray_text))
 
         settingsOverlayContainer.visibility = View.VISIBLE
         btnCloseSettings.isFocusable = true
@@ -2472,6 +2573,28 @@ class MainActivity : AppCompatActivity() {
             updateCenterModeUI()
             ExternalMediaManager.syncActiveSessions(this)
         }
+        handleNotificationTestIntent(intent)
+    }
+
+    private fun handleNotificationTestIntent(intent: Intent?) {
+        if (intent != null && intent.hasExtra("TEST_NOTIF_SENDER")) {
+            val sender = intent.getStringExtra("TEST_NOTIF_SENDER") ?: "Contact"
+            val text = intent.getStringExtra("TEST_NOTIF_TEXT") ?: "Salut! Cum merge drumul?"
+            val isVoice = intent.getBooleanExtra("TEST_NOTIF_VOICE", false)
+            val appName = intent.getStringExtra("TEST_NOTIF_APP") ?: "WhatsApp"
+            val pkg = intent.getStringExtra("TEST_NOTIF_PKG") ?: "com.whatsapp"
+            displayNotification(CarNotification(
+                key = "test_${System.currentTimeMillis()}",
+                packageName = pkg,
+                appName = appName,
+                sender = sender,
+                message = text,
+                timestamp = System.currentTimeMillis(),
+                isVoiceMessage = isVoice,
+                contentIntent = null,
+                appIcon = null
+            ))
+        }
     }
 
     override fun onResume() {
@@ -2514,6 +2637,97 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         energyHandler.removeCallbacksAndMessages(null)
         centerMapView.onDestroy()
+        try {
+            textToSpeech?.stop()
+            textToSpeech?.shutdown()
+        } catch (_: Exception) {}
+        CarNotificationHub.onNotificationReceived = null
+        notifDismissHandler.removeCallbacksAndMessages(null)
+    }
+
+    private fun initTextToSpeech() {
+        try {
+            textToSpeech = TextToSpeech(this) { status ->
+                if (status == TextToSpeech.SUCCESS) {
+                    val ro = Locale("ro", "RO")
+                    val res = textToSpeech?.setLanguage(ro)
+                    if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
+                        textToSpeech?.language = Locale.getDefault()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("MainActivity", "TTS init exception: ${e.message}")
+        }
+    }
+
+    private fun speakNotification(notif: CarNotification) {
+        try {
+            val textToSpeak = if (notif.isVoiceMessage) {
+                "Mesaj vocal primit de la ${notif.sender}"
+            } else {
+                "Mesaj de la ${notif.sender}: ${notif.message}"
+            }
+            textToSpeech?.speak(textToSpeak, TextToSpeech.QUEUE_FLUSH, null, "CarNotifUtterance")
+        } catch (e: Exception) {
+            Log.e("MainActivity", "TTS speak exception: ${e.message}")
+        }
+    }
+
+    private fun displayNotification(notif: CarNotification) {
+        activeNotification = notif
+        runOnUiThread {
+            if (currentMode != CenterMode.NOTIFICATION) {
+                preNotificationMode = currentMode
+                currentMode = CenterMode.NOTIFICATION
+                updateCenterModeUI(animateFrom = preNotificationMode)
+            } else {
+                updateCenterModeUI()
+            }
+
+            // Pictograma aplicatiei
+            if (notif.appIcon != null) {
+                ivNotifAppIcon.setImageDrawable(notif.appIcon)
+            } else {
+                if (notif.packageName.contains("whatsapp", ignoreCase = true)) {
+                    ivNotifAppIcon.setImageResource(R.drawable.ic_mask_whatsapp)
+                } else {
+                    ivNotifAppIcon.setImageResource(R.drawable.ic_sms)
+                }
+            }
+
+            tvNotifAppName.text = notif.appName.uppercase(Locale.getDefault())
+            val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(notif.timestamp))
+            tvNotifTime.text = timeStr
+            tvNotifSender.text = notif.sender
+
+            if (notif.isVoiceMessage) {
+                layoutNotifVoiceBadge.visibility = View.VISIBLE
+                tvNotifVoiceLabel.text = "MESAJ VOCAL"
+                tvNotifText.text = if (notif.message.isNotBlank()) notif.message else "Atinge Redare pentru a asculta"
+                ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
+                tvNotifActionText.text = "REDARE"
+                btnNotifSpeak.visibility = View.GONE
+            } else {
+                layoutNotifVoiceBadge.visibility = View.GONE
+                tvNotifText.text = notif.message
+                ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
+                tvNotifActionText.text = "DESCHIDE"
+                btnNotifSpeak.visibility = View.VISIBLE
+            }
+
+            // Auto-dismiss dupa 15 secunde
+            notifDismissHandler.removeCallbacks(notifDismissRunnable)
+            notifDismissHandler.postDelayed(notifDismissRunnable, 15000L)
+        }
+    }
+
+    private fun dismissNotification() {
+        notifDismissHandler.removeCallbacks(notifDismissRunnable)
+        if (currentMode == CenterMode.NOTIFICATION) {
+            currentMode = preNotificationMode
+            updateCenterModeUI(animateFrom = CenterMode.NOTIFICATION)
+        }
     }
 
     private fun fetchAndDisplayEnergyData() {
@@ -2712,6 +2926,7 @@ class MainActivity : AppCompatActivity() {
                 if (::btnCloseSettings.isInitialized && btnCloseSettings.visibility == View.VISIBLE) views.add(btnCloseSettings)
                 if (::seekDayBrightness.isInitialized && seekDayBrightness.visibility == View.VISIBLE) views.add(seekDayBrightness)
                 if (::seekNightBrightness.isInitialized && seekNightBrightness.visibility == View.VISIBLE) views.add(seekNightBrightness)
+                if (::btnOpenNotifSettings.isInitialized && btnOpenNotifSettings.visibility == View.VISIBLE) views.add(btnOpenNotifSettings)
             }
             callOverlayContainer -> {
                 val ringing = findViewById<View>(R.id.call_ringing_actions)
@@ -2889,6 +3104,9 @@ class MainActivity : AppCompatActivity() {
         }
         if (::settingsOverlayContainer.isInitialized && settingsOverlayContainer.visibility == View.VISIBLE) {
             settingsOverlayContainer.visibility = View.GONE
+        }
+        if (currentMode == CenterMode.NOTIFICATION) {
+            dismissNotification()
         }
     }
 
