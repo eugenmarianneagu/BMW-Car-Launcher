@@ -2677,6 +2677,24 @@ class MainActivity : AppCompatActivity() {
             energyHandler.removeCallbacks(energyPollRunnable)
             energyPollRunnable.run()
         }
+
+        // Reconectare / Abonare la notificări
+        CarNotificationHub.onNotificationReceived = { notif ->
+            displayNotification(notif)
+        }
+
+        // Asigură că serviciul NotificationListenerService este conectat la sistem
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                if (CarNotificationListenerService.isNotificationAccessGranted(this)) {
+                    android.service.notification.NotificationListenerService.requestRebind(
+                        ComponentName(this, CarNotificationListenerService::class.java)
+                    )
+                }
+            } catch (e: Exception) {
+                Log.w("MainActivity", "requestRebind failed: ${e.message}")
+            }
+        }
     }
 
     override fun onPause() {

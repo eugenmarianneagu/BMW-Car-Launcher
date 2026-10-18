@@ -23,6 +23,23 @@ class CarNotificationListenerService : NotificationListenerService() {
         }
     }
 
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        Log.i(TAG, ">>> CarNotificationListenerService CONECTAT la sistem! <<<")
+    }
+
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        Log.w(TAG, ">>> CarNotificationListenerService DECONECTAT! Se incearca reconectarea... <<<")
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            try {
+                requestRebind(android.content.ComponentName(this, CarNotificationListenerService::class.java))
+            } catch (e: Exception) {
+                Log.e(TAG, "Eroare requestRebind in onListenerDisconnected: ${e.message}")
+            }
+        }
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         super.onNotificationPosted(sbn)
         if (sbn == null) return
@@ -34,13 +51,6 @@ class CarNotificationListenerService : NotificationListenerService() {
         if (sbn.isOngoing) return
 
         val n = sbn.notification ?: return
-
-        // Ignorăm notificările de tip Group Summary (ex: "2 new messages", "3 mesaje din 2 conversații")
-        // pentru a nu suprascrie mesajul individual primit
-        if ((n.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
-            Log.d(TAG, "Ignorare group summary notification pentru $pkg")
-            return
-        }
 
         // Verificăm dacă este o aplicație de comunicare / mesaje
         val isMessagingApp = isMessageSource(pkg, n)
@@ -56,10 +66,23 @@ class CarNotificationListenerService : NotificationListenerService() {
 
         if (rawTitle.isEmpty() && rawText.isEmpty()) return
 
-        // Ignorăm texte de rezumat colectiv
-        if (rawText.matches(Regex("^\\d+\\s+(new messages|mesaje noi).*", RegexOption.IGNORE_CASE))) {
+        // Ignorăm texte de rezumat generic (ex: "2 new messages", "3 mesaje noi")
+        if (rawText.matches(Regex("^\\d+\\s+(new messages|mesaje noi|conversations|conversații).*", RegexOption.IGNORE_CASE))) {
             Log.d(TAG, "Ignorare text rezumat generic: $rawText")
             return
+        }
+
+        // Dacă notificarea este marcată ca Group Summary, verificăm dacă este doar un container fără mesaj concret
+        if ((n.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
+            val isCountOnly = rawText.contains("messages", ignoreCase = true) ||
+                    rawText.contains("mesaje", ignoreCase = true) ||
+                    rawText.isEmpty()
+            val hasDirectMessage = extras.containsKey(Notification.EXTRA_MESSAGES) ||
+                    extras.containsKey("android.messagingStyleUser")
+            if (isCountOnly && !hasDirectMessage) {
+                Log.d(TAG, "Ignorare group summary generic: $rawText pentru $pkg")
+                return
+            }
         }
 
         var sender = rawTitle
