@@ -227,7 +227,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvEnergyBatteryStatus: TextView
     private lateinit var tvEnergyBatteryVoltage: TextView
     private lateinit var tvEnergyBatteryPower: TextView
-    private lateinit var tvEnergyLastUpdate: TextView
     private val energyHandler = Handler(Looper.getMainLooper())
     private val energyPollRunnable = object : Runnable {
         override fun run() {
@@ -542,7 +541,6 @@ class MainActivity : AppCompatActivity() {
         tvEnergyBatteryStatus = findViewById(R.id.tv_energy_battery_status)
         tvEnergyBatteryVoltage = findViewById(R.id.tv_energy_battery_voltage)
         tvEnergyBatteryPower = findViewById(R.id.tv_energy_battery_power)
-        tvEnergyLastUpdate = findViewById(R.id.tv_energy_last_update)
 
         // Inițializare Fereastră Contacte Favorite (Half-Screen Overlay)
         favoritesOverlayContainer = findViewById(R.id.favorites_overlay_container)
@@ -2562,14 +2560,6 @@ class MainActivity : AppCompatActivity() {
                 "${data.batteryPower.toInt()} W"
             }
             tvEnergyBatteryPower.text = batPowerStr
-
-            // Footer
-            val timeFmt = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-            tvEnergyLastUpdate.text = if (data.isSuccess) {
-                "ACTUALIZAT LA $timeFmt • HOME ASSISTANT"
-            } else {
-                "CONEXIUNE ÎN AȘTEPTARE ($timeFmt)"
-            }
         }
     }
 
