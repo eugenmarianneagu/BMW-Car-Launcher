@@ -22,6 +22,8 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <queries>
         <package android:name="com.google.android.youtube" />
@@ -162,6 +164,7 @@
             <intent-filter>
                 <action android:name="com.bmw.carlauncher.ACTION_F12" />
                 <action android:name="com.bmw.carlauncher.RETURN_HOME" />
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
             </intent-filter>
         </receiver>
 

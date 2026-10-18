@@ -3291,7 +3291,13 @@ class MainActivity : AppCompatActivity() {
         // Tasta F12 de pe tastatura Bluetooth revine direct la launcher și închide ferestrele secundare
         if (event.keyCode == KeyEvent.KEYCODE_F12) {
             if (event.action == KeyEvent.ACTION_DOWN) {
+                Log.i("MainActivity", "F12 apasat! Revenire la ecranul principal BMW...")
                 dismissAllOverlays()
+                if (currentMode != CenterMode.BMW) {
+                    val prev = currentMode
+                    currentMode = CenterMode.BMW
+                    updateCenterModeUI(animateFrom = prev)
+                }
             }
             return true
         }

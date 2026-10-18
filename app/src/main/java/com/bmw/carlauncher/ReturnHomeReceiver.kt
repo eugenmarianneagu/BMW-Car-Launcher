@@ -1,13 +1,41 @@
 package com.bmw.carlauncher
 
+import android.bluetooth.BluetoothDevice
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.util.Log
 
 class ReturnHomeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        Log.i(TAG, "ReturnHomeReceiver triggered with action: ${intent.action}")
+        val action = intent.action ?: return
+        Log.i(TAG, "ReturnHomeReceiver triggered with action: $action")
+
+        if (action == BluetoothDevice.ACTION_ACL_CONNECTED) {
+            val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+            }
+            val devName = try { device?.name } catch (_: SecurityException) { null } ?: ""
+            Log.i(TAG, "Bluetooth device connected: '$devName', address=${device?.address}")
+
+            // Dacă este specificat un nume, filtrăm dispozitivele care nu țin de mașină/ESP32
+            if (devName.isNotEmpty() &&
+                !devName.contains("BMW", ignoreCase = true) &&
+                !devName.contains("iDrive", ignoreCase = true) &&
+                !devName.contains("ESP32", ignoreCase = true)) {
+                Log.d(TAG, "Dispozitiv Bluetooth ignorat (nu este BMW/ESP32): $devName")
+                return
+            }
+        }
+
+        launchMainActivity(context)
+    }
+
+    private fun launchMainActivity(context: Context) {
         try {
             val launchIntent = Intent(context, MainActivity::class.java).apply {
                 action = Intent.ACTION_MAIN
@@ -21,8 +49,9 @@ class ReturnHomeReceiver : BroadcastReceiver() {
                 )
             }
             context.startActivity(launchIntent)
+            Log.i(TAG, "MainActivity lansata cu succes din ReturnHomeReceiver")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch MainActivity", e)
+            Log.e(TAG, "Eroare la lansarea MainActivity din ReturnHomeReceiver", e)
         }
     }
 
@@ -30,3 +59,4 @@ class ReturnHomeReceiver : BroadcastReceiver() {
         private const val TAG = "BMWAccessibility"
     }
 }
+
