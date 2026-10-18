@@ -679,6 +679,9 @@ class MainActivity : AppCompatActivity() {
         CarNotificationHub.onNotificationReceived = { notif ->
             displayNotification(notif)
         }
+        if (CarNotificationListenerService.isNotificationAccessGranted(this)) {
+            CarNotificationListenerService.rebindService(this)
+        }
         handleNotificationTestIntent(intent)
 
         // Inițializare Fereastră Contacte Favorite (Half-Screen Overlay)
@@ -2692,16 +2695,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Asigură că serviciul NotificationListenerService este conectat la sistem
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            try {
-                if (CarNotificationListenerService.isNotificationAccessGranted(this)) {
-                    android.service.notification.NotificationListenerService.requestRebind(
-                        ComponentName(this, CarNotificationListenerService::class.java)
-                    )
-                }
-            } catch (e: Exception) {
-                Log.w("MainActivity", "requestRebind failed: ${e.message}")
-            }
+        if (CarNotificationListenerService.isNotificationAccessGranted(this)) {
+            CarNotificationListenerService.rebindService(this)
         }
     }
 

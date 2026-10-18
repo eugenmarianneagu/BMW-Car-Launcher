@@ -12,6 +12,8 @@ class CarNotificationListenerService : NotificationListenerService() {
 
     companion object {
         private const val TAG = "CarNotifService"
+        var isConnected: Boolean = false
+            private set
 
         fun isNotificationAccessGranted(context: Context): Boolean {
             val enabledListeners = Settings.Secure.getString(
@@ -21,19 +23,47 @@ class CarNotificationListenerService : NotificationListenerService() {
             val myPackage = context.packageName
             return enabledListeners.contains(myPackage)
         }
+
+        fun rebindService(context: Context) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                try {
+                    val component = android.content.ComponentName(context, CarNotificationListenerService::class.java)
+                    if (!isConnected) {
+                        Log.i(TAG, "Listener neconectat - fortare rebind prin component toggle...")
+                        val pm = context.packageManager
+                        pm.setComponentEnabledSetting(
+                            component,
+                            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                            android.content.pm.PackageManager.DONT_KILL_APP
+                        )
+                        pm.setComponentEnabledSetting(
+                            component,
+                            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                            android.content.pm.PackageManager.DONT_KILL_APP
+                        )
+                    }
+                    requestRebind(component)
+                    Log.i(TAG, "requestRebind executat pentru CarNotificationListenerService")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Eroare rebindService: ${e.message}")
+                }
+            }
+        }
     }
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        isConnected = true
         Log.i(TAG, ">>> CarNotificationListenerService CONECTAT la sistem! <<<")
     }
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
+        isConnected = false
         Log.w(TAG, ">>> CarNotificationListenerService DECONECTAT! Se incearca reconectarea... <<<")
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
             try {
-                requestRebind(android.content.ComponentName(this, CarNotificationListenerService::class.java))
+                rebindService(this)
             } catch (e: Exception) {
                 Log.e(TAG, "Eroare requestRebind in onListenerDisconnected: ${e.message}")
             }
@@ -54,39 +84,20 @@ class CarNotificationListenerService : NotificationListenerService() {
 
         // Verificăm dacă este o aplicație de comunicare / mesaje
         val isMessagingApp = isMessageSource(pkg, n)
+        Log.d(TAG, "onNotificationPosted: pkg=$pkg, isMessagingApp=$isMessagingApp, category=${n.category}")
         if (!isMessagingApp) return
 
         val extras = n.extras ?: return
 
-        // 1. Extragere text și expeditor
+        // 1. Extragere text și expeditor de bază
         val rawTitle = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim() ?: ""
         val rawText = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim()
             ?: extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.trim()
             ?: ""
 
-        if (rawTitle.isEmpty() && rawText.isEmpty()) return
-
-        // Ignorăm texte de rezumat generic (ex: "2 new messages", "3 mesaje noi")
-        if (rawText.matches(Regex("^\\d+\\s+(new messages|mesaje noi|conversations|conversații).*", RegexOption.IGNORE_CASE))) {
-            Log.d(TAG, "Ignorare text rezumat generic: $rawText")
-            return
-        }
-
-        // Dacă notificarea este marcată ca Group Summary, verificăm dacă este doar un container fără mesaj concret
-        if ((n.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
-            val isCountOnly = rawText.contains("messages", ignoreCase = true) ||
-                    rawText.contains("mesaje", ignoreCase = true) ||
-                    rawText.isEmpty()
-            val hasDirectMessage = extras.containsKey(Notification.EXTRA_MESSAGES) ||
-                    extras.containsKey("android.messagingStyleUser")
-            if (isCountOnly && !hasDirectMessage) {
-                Log.d(TAG, "Ignorare group summary generic: $rawText pentru $pkg")
-                return
-            }
-        }
-
         var sender = rawTitle
         var message = rawText
+        var hasAudioMime = false
 
         // Verificare NotificationCompat.MessagingStyle pentru detalii bogate (WhatsApp, SMS etc.)
         try {
@@ -98,6 +109,10 @@ class CarNotificationListenerService : NotificationListenerService() {
                     val msgText = lastMsg.text?.toString()?.trim()
                     if (!msgText.isNullOrEmpty()) {
                         message = msgText
+                    }
+                    val mime = lastMsg.dataMimeType
+                    if (mime != null && mime.startsWith("audio/")) {
+                        hasAudioMime = true
                     }
                     val personName = lastMsg.person?.name?.toString()?.trim()
                     if (!personName.isNullOrEmpty()) {
@@ -114,6 +129,30 @@ class CarNotificationListenerService : NotificationListenerService() {
             Log.w(TAG, "Eroare parsare MessagingStyle: ${e.message}")
         }
 
+        if (sender.isEmpty() && message.isEmpty()) {
+            Log.d(TAG, "Ignorare notificare cu sender si message goale: $pkg")
+            return
+        }
+
+        // Ignorăm texte de rezumat generic (ex: "2 new messages", "3 mesaje noi")
+        if (message.matches(Regex("^\\d+\\s+(new messages|mesaje noi|conversations|conversații).*", RegexOption.IGNORE_CASE))) {
+            Log.d(TAG, "Ignorare text rezumat generic: $message")
+            return
+        }
+
+        // Dacă notificarea este marcată ca Group Summary, verificăm dacă este doar un container fără mesaj concret
+        if ((n.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
+            val isCountOnly = message.contains("messages", ignoreCase = true) ||
+                    message.contains("mesaje", ignoreCase = true) ||
+                    message.isEmpty()
+            val hasDirectMessage = extras.containsKey(Notification.EXTRA_MESSAGES) ||
+                    extras.containsKey("android.messagingStyleUser")
+            if (isCountOnly && !hasDirectMessage) {
+                Log.d(TAG, "Ignorare group summary generic: $message pentru $pkg")
+                return
+            }
+        }
+
         val pm = packageManager
         val appName = try {
             val appInfo = pm.getApplicationInfo(pkg, 0)
@@ -127,7 +166,7 @@ class CarNotificationListenerService : NotificationListenerService() {
         }
 
         // 2. Detectare Mesaj Vocal (WhatsApp sau alte aplicații de chat)
-        val isVoice = isVoiceMessage(message, n)
+        val isVoice = hasAudioMime || isVoiceMessage(message, n)
 
         val appIcon = try {
             pm.getApplicationIcon(pkg)
@@ -164,7 +203,7 @@ class CarNotificationListenerService : NotificationListenerService() {
             appIcon = appIcon
         )
 
-        Log.d(TAG, "Notificare receptionata: App=$appName, De la=$sender, Voice=$isVoice, Msg=$message")
+        Log.i(TAG, "Notificare receptionata cu succes: App=$appName, De la=$sender, Voice=$isVoice, Msg=$message")
         CarNotificationHub.postNotification(carNotif)
     }
 
@@ -173,22 +212,34 @@ class CarNotificationListenerService : NotificationListenerService() {
     }
 
     private fun isMessageSource(pkg: String, n: Notification): Boolean {
-        // WhatsApp si WhatsApp Business
+        // 1. Daca notificarea are stil MessagingStyle (WhatsApp, SMS, Telegram, Messenger etc.)
+        try {
+            if (NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(n) != null) {
+                return true
+            }
+        } catch (_: Exception) {}
+
+        // 2. Pentru teste adb / shell
+        if (pkg == "com.android.shell") return true
+
+        // 3. WhatsApp si WhatsApp Business
         if (pkg.contains("whatsapp", ignoreCase = true)) return true
 
-        // SMS Apps
+        // 4. SMS Apps
         if (pkg.contains("messaging", ignoreCase = true) ||
             pkg.contains("mms", ignoreCase = true) ||
             pkg == "com.google.android.apps.messaging" ||
             pkg == "com.samsung.android.messaging") return true
 
-        // Alte aplicatii populare de chat
+        // 5. Alte aplicatii populare de chat
         if (pkg.contains("telegram", ignoreCase = true) ||
             pkg.contains("securesms", ignoreCase = true) || // Signal
             pkg.contains("viber", ignoreCase = true) ||
-            pkg == "com.facebook.orca") return true
+            pkg.contains("orca", ignoreCase = true) ||
+            pkg.contains("discord", ignoreCase = true) ||
+            pkg.contains("skype", ignoreCase = true)) return true
 
-        // Categorie Android directa
+        // 6. Categorie Android directa
         if (n.category == Notification.CATEGORY_MESSAGE) return true
 
         return false
