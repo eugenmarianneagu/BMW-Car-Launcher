@@ -11,7 +11,7 @@
     android:background="@drawable/bg_favorite_item"
     android:clickable="true"
     android:focusable="true"
-    android:focusableInTouchMode="true">
+    android:focusableInTouchMode="false">
 
     <FrameLayout
         android:id="@+id/music_app_icon_frame"

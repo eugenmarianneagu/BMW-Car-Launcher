@@ -625,6 +625,19 @@ class MainActivity : AppCompatActivity() {
         youtubeCircleTouchOverlay.enableInstantClickOnTouch()
         viewCenterMap.enableInstantClickOnTouch()
 
+        // Butoane din ferestrele auxiliare - clic instant la prima atingere
+        val overlayButtons = listOf(
+            btnCloseFavorites, btnOpenDialer,
+            btnCloseRadio, btnAddStation,
+            btnCloseMusic, btnCloseApps,
+            btnCallAnswer, btnCallDeny, btnCallHangup
+        )
+        overlayButtons.forEach { btn ->
+            btn.isFocusable = true
+            btn.isFocusableInTouchMode = false
+            btn.enableInstantClickOnTouch()
+        }
+
         focusPlayPauseButton()
     }
 
@@ -1706,7 +1719,8 @@ class MainActivity : AppCompatActivity() {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
                 val view = convertView ?: layoutInflater.inflate(R.layout.item_music_app, parent, false)
                 view.isFocusable = true
-                view.isFocusableInTouchMode = true
+                view.isFocusableInTouchMode = false
+                view.enableInstantClickOnTouch()
                 val opt = options[position]
 
                 val frame = view.findViewById<FrameLayout>(R.id.music_app_icon_frame)
@@ -1733,9 +1747,8 @@ class MainActivity : AppCompatActivity() {
 
         musicOverlayContainer.visibility = View.VISIBLE
         btnCloseMusic.isFocusable = true
-        btnCloseMusic.isFocusableInTouchMode = true
-        btnCloseMusic.requestFocus()
-        btnCloseMusic.post { btnCloseMusic.requestFocus() }
+        btnCloseMusic.isFocusableInTouchMode = false
+        btnCloseMusic.enableInstantClickOnTouch()
     }
 
     private fun launchSelectedMediaApp(isYouTubeMusic: Boolean) {
@@ -1847,7 +1860,8 @@ class MainActivity : AppCompatActivity() {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
                 val view = convertView ?: layoutInflater.inflate(R.layout.item_app_grid, parent, false)
                 view.isFocusable = true
-                view.isFocusableInTouchMode = true
+                view.isFocusableInTouchMode = false
+                view.enableInstantClickOnTouch()
                 val info = apps[position]
 
                 val icon = view.findViewById<ImageView>(R.id.app_icon)
@@ -1871,9 +1885,8 @@ class MainActivity : AppCompatActivity() {
 
         appsOverlayContainer.visibility = View.VISIBLE
         btnCloseApps.isFocusable = true
-        btnCloseApps.isFocusableInTouchMode = true
-        btnCloseApps.requestFocus()
-        btnCloseApps.post { btnCloseApps.requestFocus() }
+        btnCloseApps.isFocusableInTouchMode = false
+        btnCloseApps.enableInstantClickOnTouch()
     }
 
     private fun refreshStations() {
@@ -1890,7 +1903,8 @@ class MainActivity : AppCompatActivity() {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
                 val view = convertView ?: layoutInflater.inflate(R.layout.item_radio_station, parent, false)
                 view.isFocusable = true
-                view.isFocusableInTouchMode = true
+                view.isFocusableInTouchMode = false
+                view.enableInstantClickOnTouch()
                 val station = stations[position]
 
                 val frame = view.findViewById<FrameLayout>(R.id.radio_logo_frame)
@@ -1935,9 +1949,8 @@ class MainActivity : AppCompatActivity() {
         }
         radioOverlayContainer.visibility = View.VISIBLE
         btnCloseRadio.isFocusable = true
-        btnCloseRadio.isFocusableInTouchMode = true
-        btnCloseRadio.requestFocus()
-        btnCloseRadio.post { btnCloseRadio.requestFocus() }
+        btnCloseRadio.isFocusableInTouchMode = false
+        btnCloseRadio.enableInstantClickOnTouch()
     }
 
     private fun showAddStationDialog() {
@@ -2819,7 +2832,8 @@ class MainActivity : AppCompatActivity() {
                 override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
                     val view = convertView ?: layoutInflater.inflate(R.layout.item_favorite_contact, parent, false)
                     view.isFocusable = true
-                    view.isFocusableInTouchMode = true
+                    view.isFocusableInTouchMode = false
+                    view.enableInstantClickOnTouch()
                     val contact = favorites[position]
 
                     val photoFrame = view.findViewById<FrameLayout>(R.id.fav_contact_photo_frame)
@@ -2862,9 +2876,8 @@ class MainActivity : AppCompatActivity() {
 
         favoritesOverlayContainer.visibility = View.VISIBLE
         btnCloseFavorites.isFocusable = true
-        btnCloseFavorites.isFocusableInTouchMode = true
-        btnCloseFavorites.requestFocus()
-        btnCloseFavorites.post { btnCloseFavorites.requestFocus() }
+        btnCloseFavorites.isFocusableInTouchMode = false
+        btnCloseFavorites.enableInstantClickOnTouch()
     }
 
     private fun startCallToContact(contact: FavoriteContact) {
