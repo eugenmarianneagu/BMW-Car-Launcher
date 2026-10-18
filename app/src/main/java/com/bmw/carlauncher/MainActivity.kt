@@ -654,8 +654,7 @@ class MainActivity : AppCompatActivity() {
                     tvNotifActionText.text = "REDARE"
                     ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
                     resumeOtherPlayersAfterVoiceMessage()
-                    notifDismissHandler.removeCallbacks(notifDismissRunnable)
-                    notifDismissHandler.postDelayed(notifDismissRunnable, 8000L)
+                    resetNotifDismissTimer()
                 }
             }
 
@@ -664,6 +663,7 @@ class MainActivity : AppCompatActivity() {
                     tvNotifActionText.text = "REDARE"
                     ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
                     resumeOtherPlayersAfterVoiceMessage()
+                    resetNotifDismissTimer()
                     val notif = activeNotification
                     if (notif != null) {
                         fallbackOpenNotification(notif)
@@ -2758,10 +2758,16 @@ class MainActivity : AppCompatActivity() {
                     textToSpeech?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
                         override fun onStart(utteranceId: String?) {}
                         override fun onDone(utteranceId: String?) {
-                            runOnUiThread { resumeOtherPlayersAfterVoiceMessage() }
+                            runOnUiThread {
+                                resumeOtherPlayersAfterVoiceMessage()
+                                resetNotifDismissTimer()
+                            }
                         }
                         override fun onError(utteranceId: String?) {
-                            runOnUiThread { resumeOtherPlayersAfterVoiceMessage() }
+                            runOnUiThread {
+                                resumeOtherPlayersAfterVoiceMessage()
+                                resetNotifDismissTimer()
+                            }
                         }
                     })
                 }
@@ -2832,15 +2838,23 @@ class MainActivity : AppCompatActivity() {
             // Permite focalizarea copiilor din interiorul cercului central
             centerCircle.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
 
-            // Auto-dismiss dupa 15 secunde
-            notifDismissHandler.removeCallbacks(notifDismissRunnable)
-            notifDismissHandler.postDelayed(notifDismissRunnable, 15000L)
+            // Auto-dismiss dupa 20 secunde de inactivitate
+            resetNotifDismissTimer()
 
             // Focalizare automata pe butonul de actiune principala
             btnNotifAction.isFocusable = true
             btnNotifAction.isFocusableInTouchMode = true
             btnNotifAction.post {
                 btnNotifAction.requestFocus()
+            }
+        }
+    }
+
+    private fun resetNotifDismissTimer() {
+        if (currentMode == CenterMode.NOTIFICATION) {
+            notifDismissHandler.removeCallbacks(notifDismissRunnable)
+            if (!VoiceMessagePlayer.isPlaying() && textToSpeech?.isSpeaking != true) {
+                notifDismissHandler.postDelayed(notifDismissRunnable, 20000L)
             }
         }
     }
@@ -3268,7 +3282,17 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
+    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        if (ev?.action == MotionEvent.ACTION_DOWN) {
+            resetNotifDismissTimer()
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            resetNotifDismissTimer()
+        }
         // Tasta F12 de pe tastatura Bluetooth revine direct la launcher și închide ferestrele secundare
         if (event.keyCode == KeyEvent.KEYCODE_F12) {
             if (event.action == KeyEvent.ACTION_DOWN) {
