@@ -1412,28 +1412,34 @@
             app:layout_constraintStart_toEndOf="@id/gl_c2_start"
             app:layout_constraintEnd_toStartOf="@id/gl_c2_end" />
 
-        <!-- Cercul 3 (Stânga 3 - gol) -->
-        <FrameLayout
-            android:id="@+id/circle_btn_3"
+        <!-- Cercul 3 (Stânga 3 - Volum -) -->
+        <ImageView
+            android:id="@+id/btn_volume_down"
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:background="@drawable/bg_ripple_circle"
-            android:clickable="false"
-            android:focusable="false"
+            android:clickable="true"
+            android:focusable="true"
+            android:padding="16dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_volume_down"
             app:layout_constraintDimensionRatio="1:1"
             app:layout_constraintTop_toBottomOf="@id/gl_circles_top"
             app:layout_constraintBottom_toTopOf="@id/gl_circles_bottom"
             app:layout_constraintStart_toEndOf="@id/gl_c3_start"
             app:layout_constraintEnd_toStartOf="@id/gl_c3_end" />
 
-        <!-- Cercul 4 (Dreapta 1 - gol) -->
-        <FrameLayout
-            android:id="@+id/circle_btn_4"
+        <!-- Cercul 4 (Dreapta 1 - Volum +) -->
+        <ImageView
+            android:id="@+id/btn_volume_up"
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:background="@drawable/bg_ripple_circle"
-            android:clickable="false"
-            android:focusable="false"
+            android:clickable="true"
+            android:focusable="true"
+            android:padding="16dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_volume_up"
             app:layout_constraintDimensionRatio="1:1"
             app:layout_constraintTop_toBottomOf="@id/gl_circles_top"
             app:layout_constraintBottom_toTopOf="@id/gl_circles_bottom"

@@ -213,6 +213,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var bottomTrackArtist: TextView
     private lateinit var bottomBatteryIcon: TextView
     private var bottomGpsCount: TextView? = null
+    private lateinit var btnVolumeDown: ImageView
+    private lateinit var btnVolumeUp: ImageView
     private lateinit var btnNightMode: ImageView
     private lateinit var btnQuickSettings: ImageView
 
@@ -536,6 +538,8 @@ class MainActivity : AppCompatActivity() {
         bottomTrackTitle.isSelected = true
         bottomTrackArtist = findViewById(R.id.bottom_track_artist)
         bottomBatteryIcon = findViewById(R.id.bottom_battery_icon)
+        btnVolumeDown = findViewById(R.id.btn_volume_down)
+        btnVolumeUp = findViewById(R.id.btn_volume_up)
         btnNightMode = findViewById(R.id.btn_night_mode)
         btnQuickSettings = findViewById(R.id.btn_quick_settings)
 
@@ -1494,6 +1498,14 @@ class MainActivity : AppCompatActivity() {
             } else {
                 controller?.seekToNextMediaItem()
             }
+        }
+
+        // Butoane Volum Jos
+        btnVolumeDown.setOnClickListener {
+            adjustVolume(AudioManager.ADJUST_LOWER)
+        }
+        btnVolumeUp.setOnClickListener {
+            adjustVolume(AudioManager.ADJUST_RAISE)
         }
 
         // Night Mode / Settings
@@ -3234,20 +3246,35 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun adjustVolume(direction: Int) {
+        try {
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+            audioManager.adjustStreamVolume(
+                AudioManager.STREAM_MUSIC,
+                direction,
+                AudioManager.FLAG_SHOW_UI or AudioManager.FLAG_PLAY_SOUND
+            )
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Eroare reglare volum: ${e.message}")
+        }
+    }
+
     private val focusOrderViews: List<View> by lazy {
         listOf(
             btnLeft1,        // 1. Radio
             btnLeft2,        // 2. Navigatie
             btnLeft3,        // 3. Music
-            btnPrevTrack,    // 4. Prev
-            btnPlayPause,    // 5. Play
-            btnNextTrack,    // 6. Next
-            btnRight3,       // 7. Aplicatii
-            btnRight2,       // 8. Whatsapp
-            btnRight1,       // 9. Telefon
-            centerCircle,    // 10. Cerc Central
-            btnNightMode,    // 11. Day/Night
-            btnQuickSettings // 12. Setari
+            btnVolumeDown,   // 4. Volum - (Cercul 3)
+            btnPrevTrack,    // 5. Prev
+            btnPlayPause,    // 6. Play
+            btnNextTrack,    // 7. Next
+            btnVolumeUp,     // 8. Volum + (Cercul 4)
+            btnRight3,       // 9. Aplicatii
+            btnRight2,       // 10. Whatsapp
+            btnRight1,       // 11. Telefon
+            centerCircle,    // 12. Cerc Central
+            btnNightMode,    // 13. Day/Night
+            btnQuickSettings // 14. Setari
         )
     }
 
