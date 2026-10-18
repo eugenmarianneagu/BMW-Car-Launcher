@@ -90,12 +90,14 @@ object ExternalMediaManager {
 
     private val autoReturnPollRunnable = object : Runnable {
         override fun run() {
-            if (MainActivity.isInForeground && !autoReturnArmed) return
-            if (autoReturnArmed) {
-                val elapsed = SystemClock.elapsedRealtime() - autoReturnArmTime
-                if (elapsed > 180_000L) {
-                    autoReturnArmed = false
-                }
+            if (!autoReturnArmed || MainActivity.isInForeground) {
+                cancelAutoReturn()
+                return
+            }
+            val elapsed = SystemClock.elapsedRealtime() - autoReturnArmTime
+            if (elapsed > 120_000L) {
+                cancelAutoReturn()
+                return
             }
             val ctx = appContext ?: WazeNotificationService.instance
             if (ctx != null) {
@@ -106,7 +108,7 @@ object ExternalMediaManager {
                     syncActiveSessions(ctx)
                 }
             }
-            if (!MainActivity.isInForeground || autoReturnArmed) {
+            if (autoReturnArmed && !MainActivity.isInForeground) {
                 mainHandler.postDelayed(this, 350L)
             }
         }
@@ -133,6 +135,10 @@ object ExternalMediaManager {
     fun onLauncherPaused(context: Context, taskId: Int) {
         appContext = context.applicationContext
         if (taskId != -1) launcherTaskId = taskId
+        // Do NOT poll or return if auto-return was not armed by user launching YT Music
+        if (!autoReturnArmed) {
+            return
+        }
         val ytCtrl = findYtMusicController(context)
         val pbState = ytCtrl?.playbackState?.state ?: PlaybackState.STATE_NONE
         val isPlayingNow = (pbState == PlaybackState.STATE_PLAYING)
@@ -161,6 +167,8 @@ object ExternalMediaManager {
     }
 
     private fun checkAutoReturn(pkg: String, title: String, pbState: Int?, isPlaying: Boolean) {
+        // Numai daca a fost inarmat explicit la lansarea YouTube Music
+        if (!autoReturnArmed) return
         if (!pkg.contains("youtube.music", ignoreCase = true)) return
 
         val activelyPlaying = (pbState == PlaybackState.STATE_PLAYING) || (pbState == null && isPlaying)
@@ -171,21 +179,26 @@ object ExternalMediaManager {
 
         // Daca BMW Car Launcher este deja in prim-plan, nu facem revenire
         if (MainActivity.isInForeground) {
+            cancelAutoReturn()
             return
         }
 
         val now = SystemClock.elapsedRealtime()
         if (now - lastAutoReturnTriggerTime < 1500L) return
 
-        // Daca autoReturn este inarmat sau BMW Car Launcher e in fundal si utilizatorul a dat Play in YT Music
-        if (autoReturnArmed || bgSawYtMusicNonPlaying || (now - autoReturnArmTime >= 500L)) {
-            autoReturnArmed = false
-            bgSawYtMusicNonPlaying = false
-            lastAutoReturnTriggerTime = now
-            mainHandler.removeCallbacks(autoReturnPollRunnable)
-            mainHandler.postDelayed({
-                bringLauncherToFront()
-            }, 250L)
+        // Declanșează revenirea numai dacă a fost armat și au trecut minim 800ms de la deschiderea YT Music
+        if (now - autoReturnArmTime >= 800L) {
+            val titleChanged = title.isNotEmpty() && title != autoReturnInitialTitle
+            val wasPausedNowPlaying = bgSawYtMusicNonPlaying || autoReturnSawNonPlaying || !autoReturnInitialPlaying
+            if (titleChanged || wasPausedNowPlaying || (now - autoReturnArmTime >= 3000L)) {
+                autoReturnArmed = false
+                bgSawYtMusicNonPlaying = false
+                lastAutoReturnTriggerTime = now
+                mainHandler.removeCallbacks(autoReturnPollRunnable)
+                mainHandler.postDelayed({
+                    bringLauncherToFront()
+                }, 250L)
+            }
         }
     }
 
