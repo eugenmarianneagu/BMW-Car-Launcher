@@ -264,6 +264,9 @@ class MainActivity : AppCompatActivity() {
     private val notifDismissHandler = Handler(Looper.getMainLooper())
     private val notifDismissRunnable = Runnable { dismissNotification() }
     private var textToSpeech: TextToSpeech? = null
+    private var wasRadioPlayingBeforeVoice: Boolean = false
+    private var wasYouTubePlayingBeforeVoice: Boolean = false
+    private var wasExternalMediaPlayingBeforeVoice: Boolean = false
 
     // Favorites Overlay UI
     private lateinit var favoritesOverlayContainer: FrameLayout
@@ -627,12 +630,14 @@ class MainActivity : AppCompatActivity() {
             speakNotification(notif)
         }
 
+        VoiceMessagePlayer.init(this)
         VoiceMessagePlayer.listener = object : VoiceMessagePlayer.PlaybackListener {
             override fun onPlaybackStarted() {
                 runOnUiThread {
                     notifDismissHandler.removeCallbacks(notifDismissRunnable)
                     tvNotifActionText.text = "PAUZĂ"
                     ivNotifActionIcon.setImageResource(R.drawable.ic_media_pause)
+                    pauseOtherPlayersForVoiceMessage()
                 }
             }
 
@@ -647,6 +652,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     tvNotifActionText.text = "REDARE"
                     ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
+                    resumeOtherPlayersAfterVoiceMessage()
                     notifDismissHandler.removeCallbacks(notifDismissRunnable)
                     notifDismissHandler.postDelayed(notifDismissRunnable, 8000L)
                 }
@@ -656,6 +662,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     tvNotifActionText.text = "REDARE"
                     ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
+                    resumeOtherPlayersAfterVoiceMessage()
                     val notif = activeNotification
                     if (notif != null) {
                         fallbackOpenNotification(notif)
@@ -2741,6 +2748,15 @@ class MainActivity : AppCompatActivity() {
                     if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
                         textToSpeech?.language = Locale.getDefault()
                     }
+                    textToSpeech?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+                        override fun onStart(utteranceId: String?) {}
+                        override fun onDone(utteranceId: String?) {
+                            runOnUiThread { resumeOtherPlayersAfterVoiceMessage() }
+                        }
+                        override fun onError(utteranceId: String?) {
+                            runOnUiThread { resumeOtherPlayersAfterVoiceMessage() }
+                        }
+                    })
                 }
             }
         } catch (e: Exception) {
@@ -2755,9 +2771,11 @@ class MainActivity : AppCompatActivity() {
             } else {
                 "Mesaj de la ${notif.sender}: ${notif.message}"
             }
+            pauseOtherPlayersForVoiceMessage()
             textToSpeech?.speak(textToSpeak, TextToSpeech.QUEUE_FLUSH, null, "CarNotifUtterance")
         } catch (e: Exception) {
             Log.e("MainActivity", "TTS speak exception: ${e.message}")
+            resumeOtherPlayersAfterVoiceMessage()
         }
     }
 
@@ -2812,10 +2830,75 @@ class MainActivity : AppCompatActivity() {
 
     private fun dismissNotification() {
         notifDismissHandler.removeCallbacks(notifDismissRunnable)
-        VoiceMessagePlayer.stop()
+        if (VoiceMessagePlayer.isPlaying() || VoiceMessagePlayer.getCurrentFile() != null) {
+            VoiceMessagePlayer.stop()
+            resumeOtherPlayersAfterVoiceMessage()
+        }
         if (currentMode == CenterMode.NOTIFICATION) {
             currentMode = preNotificationMode
             updateCenterModeUI(animateFrom = CenterMode.NOTIFICATION)
+        }
+    }
+
+    private fun pauseOtherPlayersForVoiceMessage() {
+        wasRadioPlayingBeforeVoice = controller?.isPlaying == true
+        if (wasRadioPlayingBeforeVoice) {
+            controller?.pause()
+            Log.d("MainActivity", "Radio intern oprit temporar pentru mesaj vocal/audio")
+        }
+
+        wasYouTubePlayingBeforeVoice = isYouTubeWebMode && isYouTubeWebPlaying
+        if (wasYouTubePlayingBeforeVoice) {
+            youtubeWebView?.evaluateJavascript("window.__bmwUserPaused = true; var v = document.querySelector('video'); if (v) v.pause();", null)
+            isYouTubeWebPlaying = false
+            updatePlayPauseIcon(false)
+            Log.d("MainActivity", "YouTube oprit temporar pentru mesaj vocal/audio")
+        }
+
+        wasExternalMediaPlayingBeforeVoice = ExternalMediaManager.currentData.isPlaying
+        if (wasExternalMediaPlayingBeforeVoice) {
+            try {
+                val mc = ExternalMediaManager.getActiveMusicController(this)
+                if (mc != null) {
+                    mc.transportControls.pause()
+                } else {
+                    val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                    am?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE))
+                    am?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PAUSE))
+                }
+            } catch (e: Exception) {
+                Log.w("MainActivity", "Eroare oprire media externa: ${e.message}")
+            }
+            Log.d("MainActivity", "Media externa oprita temporar pentru mesaj vocal/audio")
+        }
+    }
+
+    private fun resumeOtherPlayersAfterVoiceMessage() {
+        if (wasRadioPlayingBeforeVoice) {
+            wasRadioPlayingBeforeVoice = false
+            controller?.play()
+            Log.d("MainActivity", "Radio intern reluat dupa mesaj vocal")
+        } else if (wasYouTubePlayingBeforeVoice) {
+            wasYouTubePlayingBeforeVoice = false
+            youtubeWebView?.evaluateJavascript("window.__bmwUserPaused = false; var v = document.querySelector('video'); if (v) v.play();", null)
+            isYouTubeWebPlaying = true
+            updatePlayPauseIcon(true)
+            Log.d("MainActivity", "YouTube reluat dupa mesaj vocal")
+        } else if (wasExternalMediaPlayingBeforeVoice) {
+            wasExternalMediaPlayingBeforeVoice = false
+            try {
+                val mc = ExternalMediaManager.getActiveMusicController(this)
+                if (mc != null) {
+                    mc.transportControls.play()
+                } else {
+                    val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                    am?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY))
+                    am?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY))
+                }
+            } catch (e: Exception) {
+                Log.w("MainActivity", "Eroare reluare media externa: ${e.message}")
+            }
+            Log.d("MainActivity", "Media externa reluata dupa mesaj vocal")
         }
     }
 

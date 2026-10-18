@@ -1,7 +1,11 @@
 package com.bmw.carlauncher.notification
 
+import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.media.MediaPlayer
+import android.os.Build
 import android.os.Environment
 import android.util.Log
 import java.io.File
@@ -12,6 +16,8 @@ object VoiceMessagePlayer {
     private var mediaPlayer: MediaPlayer? = null
     private var currentPlayingFile: File? = null
     private var isPlayingState: Boolean = false
+    private var audioManager: AudioManager? = null
+    private var focusRequest: AudioFocusRequest? = null
 
     interface PlaybackListener {
         fun onPlaybackStarted()
@@ -25,6 +31,63 @@ object VoiceMessagePlayer {
     fun isPlaying(): Boolean = isPlayingState
 
     fun getCurrentFile(): File? = currentPlayingFile
+
+    fun init(context: Context) {
+        audioManager = context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    }
+
+    private fun requestFocus() {
+        val am = audioManager ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                    )
+                    .setOnAudioFocusChangeListener { focusChange ->
+                        if (focusChange == AudioManager.AUDIOFOCUS_LOSS ||
+                            focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+                            pause()
+                        }
+                    }
+                    .build()
+                focusRequest = req
+                am.requestAudioFocus(req)
+            } else {
+                @Suppress("DEPRECATION")
+                am.requestAudioFocus(
+                    { focusChange ->
+                        if (focusChange == AudioManager.AUDIOFOCUS_LOSS ||
+                            focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+                            pause()
+                        }
+                    },
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Eroare requestAudioFocus: ${e.message}")
+        }
+    }
+
+    private fun abandonFocus() {
+        val am = audioManager ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                focusRequest?.let { am.abandonAudioFocusRequest(it) }
+                focusRequest = null
+            } else {
+                @Suppress("DEPRECATION")
+                am.abandonAudioFocus(null)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Eroare abandonAudioFocus: ${e.message}")
+        }
+    }
 
     /**
      * Caută cel mai recent fișier de notă vocală (.opus, .m4a, .mp3, etc.)
@@ -52,7 +115,6 @@ object VoiceMessagePlayer {
 
             for (dir in candidateDirs) {
                 if (!dir.exists() || !dir.isDirectory) continue
-                // Scanăm folderele din interior (ex: 202643) și directorul curent
                 val files = dir.listFiles() ?: continue
                 for (item in files) {
                     if (item.isDirectory) {
@@ -73,7 +135,6 @@ object VoiceMessagePlayer {
                 return null
             }
 
-            // Sortăm după data modificării (cel mai nou primul)
             candidateFiles.sortByDescending { it.lastModified() }
 
             val newest = candidateFiles.first()
@@ -81,17 +142,15 @@ object VoiceMessagePlayer {
             Log.d(TAG, "Cel mai nou fisier audio: ${newest.absolutePath}, modified=${newest.lastModified()}, diff=${timeDiff}ms")
 
             val now = System.currentTimeMillis()
-            // Acceptăm dacă a fost modificat în ultimele 10 minute
             if (Math.abs(now - newest.lastModified()) < 600_000 || timeDiff < 600_000) {
                 return newest
             }
 
-            // Daca e in ultimele 30 minute, il acceptam oricum ca fiind ultimul mesaj receptionat
             if (Math.abs(now - newest.lastModified()) < 1_800_000) {
                 return newest
             }
 
-            return newest // Returnăm oricum cel mai nou dacă există
+            return newest
         } catch (e: Exception) {
             Log.e(TAG, "Eroare cautare fisier voce: ${e.message}", e)
             return null
@@ -119,6 +178,7 @@ object VoiceMessagePlayer {
             mp.setOnCompletionListener {
                 isPlayingState = false
                 currentPlayingFile = null
+                abandonFocus()
                 listener?.onPlaybackCompleted()
                 stop()
             }
@@ -127,12 +187,14 @@ object VoiceMessagePlayer {
                 isPlayingState = false
                 currentPlayingFile = null
                 Log.e(TAG, "MediaPlayer error: what=$what, extra=$extra")
+                abandonFocus()
                 listener?.onPlaybackError("Eroare redare audio: $what/$extra")
                 stop()
                 true
             }
 
             mp.prepare()
+            requestFocus()
             mp.start()
             isPlayingState = true
             listener?.onPlaybackStarted()
@@ -140,6 +202,7 @@ object VoiceMessagePlayer {
         } catch (e: Exception) {
             isPlayingState = false
             currentPlayingFile = null
+            abandonFocus()
             Log.e(TAG, "Exceptie la pornirea redarii: ${e.message}", e)
             listener?.onPlaybackError("Eroare: ${e.message}")
             stop()
@@ -151,6 +214,7 @@ object VoiceMessagePlayer {
             if (mediaPlayer?.isPlaying == true) {
                 mediaPlayer?.pause()
                 isPlayingState = false
+                abandonFocus()
                 listener?.onPlaybackPaused()
                 Log.d(TAG, "Redare pusa pe pauza")
             }
@@ -162,6 +226,7 @@ object VoiceMessagePlayer {
     fun resume() {
         try {
             mediaPlayer?.let { mp ->
+                requestFocus()
                 mp.start()
                 isPlayingState = true
                 listener?.onPlaybackStarted()
@@ -184,6 +249,7 @@ object VoiceMessagePlayer {
         } catch (e: Exception) {
             Log.e(TAG, "Eroare stop: ${e.message}")
         } finally {
+            abandonFocus()
             mediaPlayer = null
             isPlayingState = false
         }
