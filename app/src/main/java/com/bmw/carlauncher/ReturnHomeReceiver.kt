@@ -22,14 +22,20 @@ class ReturnHomeReceiver : BroadcastReceiver() {
             val devName = try { device?.name } catch (_: SecurityException) { null } ?: ""
             Log.i(TAG, "Bluetooth device connected: '$devName', address=${device?.address}")
 
-            // Dacă este specificat un nume, filtrăm dispozitivele care nu țin de mașină/ESP32
-            if (devName.isNotEmpty() &&
-                !devName.contains("BMW", ignoreCase = true) &&
-                !devName.contains("iDrive", ignoreCase = true) &&
-                !devName.contains("ESP32", ignoreCase = true)) {
-                Log.d(TAG, "Dispozitiv Bluetooth ignorat (nu este BMW/ESP32): $devName")
+            // Filtru strict: reacționează DOAR dacă numele dispozitivului conține "BMW", "iDrive" sau "ESP32"
+            val isTargetDevice = devName.contains("BMW", ignoreCase = true) ||
+                    devName.contains("iDrive", ignoreCase = true) ||
+                    devName.contains("ESP32", ignoreCase = true)
+
+            if (!isTargetDevice) {
+                Log.d(TAG, "Dispozitiv Bluetooth ignorat (nu este BMW/iDrive/ESP32): '$devName', adresa=${device?.address}")
                 return
             }
+
+            Log.i(TAG, "Dispozitiv BMW/ESP32 detectat ('$devName')! Se lanseaza aplicatia...")
+            try {
+                android.widget.Toast.makeText(context, "BMW iDrive conectat", android.widget.Toast.LENGTH_SHORT).show()
+            } catch (_: Exception) {}
         }
 
         launchMainActivity(context)
