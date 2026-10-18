@@ -2846,6 +2846,14 @@ class MainActivity : AppCompatActivity() {
         try {
             val textToSpeak = if (notif.isVoiceMessage) {
                 "Mesaj vocal primit de la ${notif.sender}"
+            } else if (notif.packageName.contains("gm", ignoreCase = true) || notif.appName.contains("Gmail", ignoreCase = true)) {
+                "Email de la ${notif.sender}: ${notif.message}"
+            } else if (notif.packageName.contains("homeassistant", ignoreCase = true) || notif.appName.contains("Home Assistant", ignoreCase = true)) {
+                if (notif.sender.equals("Home Assistant", ignoreCase = true)) {
+                    "Notificare Home Assistant: ${notif.message}"
+                } else {
+                    "Notificare Home Assistant, ${notif.sender}: ${notif.message}"
+                }
             } else {
                 "Mesaj de la ${notif.sender}: ${notif.message}"
             }
@@ -2873,10 +2881,19 @@ class MainActivity : AppCompatActivity() {
             if (notif.appIcon != null) {
                 ivNotifAppIcon.setImageDrawable(notif.appIcon)
             } else {
-                if (notif.packageName.contains("whatsapp", ignoreCase = true)) {
-                    ivNotifAppIcon.setImageResource(R.drawable.ic_mask_whatsapp)
-                } else {
-                    ivNotifAppIcon.setImageResource(R.drawable.ic_sms)
+                when {
+                    notif.packageName.contains("whatsapp", ignoreCase = true) -> {
+                        ivNotifAppIcon.setImageResource(R.drawable.ic_mask_whatsapp)
+                    }
+                    notif.packageName.contains("gm", ignoreCase = true) || notif.packageName.contains("mail", ignoreCase = true) -> {
+                        ivNotifAppIcon.setImageResource(R.drawable.ic_email)
+                    }
+                    notif.packageName.contains("homeassistant", ignoreCase = true) -> {
+                        ivNotifAppIcon.setImageResource(R.drawable.ic_energy_home)
+                    }
+                    else -> {
+                        ivNotifAppIcon.setImageResource(R.drawable.ic_sms)
+                    }
                 }
             }
 

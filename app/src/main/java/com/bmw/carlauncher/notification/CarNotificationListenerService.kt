@@ -91,9 +91,19 @@ class CarNotificationListenerService : NotificationListenerService() {
 
         // 1. Extragere text și expeditor de bază
         val rawTitle = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim() ?: ""
-        val rawText = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim()
-            ?: extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.trim()
-            ?: ""
+        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim() ?: ""
+        val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.trim() ?: ""
+        val textLines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+            ?.mapNotNull { it?.toString()?.trim() }
+            ?.filter { it.isNotEmpty() }
+
+        var rawText = when {
+            bigText.isNotEmpty() && text.isNotEmpty() && !bigText.contains(text, ignoreCase = true) -> "$text - $bigText"
+            bigText.isNotEmpty() -> bigText
+            text.isNotEmpty() -> text
+            !textLines.isNullOrEmpty() -> textLines.joinToString("\n")
+            else -> ""
+        }
 
         var sender = rawTitle
         var message = rawText
@@ -134,8 +144,8 @@ class CarNotificationListenerService : NotificationListenerService() {
             return
         }
 
-        // Ignorăm texte de rezumat generic (ex: "2 new messages", "3 mesaje noi")
-        if (message.matches(Regex("^\\d+\\s+(new messages|mesaje noi|conversations|conversații).*", RegexOption.IGNORE_CASE))) {
+        // Ignorăm texte de rezumat generic (ex: "2 new messages", "3 mesaje noi", "2 unread emails")
+        if (message.matches(Regex("^\\d+\\s+(new messages|mesaje noi|conversations|conversații|unread messages|unread emails|e-mailuri noi|mesaje necitite).*", RegexOption.IGNORE_CASE))) {
             Log.d(TAG, "Ignorare text rezumat generic: $message")
             return
         }
@@ -158,10 +168,18 @@ class CarNotificationListenerService : NotificationListenerService() {
             val appInfo = pm.getApplicationInfo(pkg, 0)
             pm.getApplicationLabel(appInfo).toString()
         } catch (e: Exception) {
-            "Mesaj"
+            when {
+                pkg.contains("gmail", ignoreCase = true) || pkg == "com.google.android.gm" -> "Gmail"
+                pkg.contains("homeassistant", ignoreCase = true) -> "Home Assistant"
+                pkg.contains("whatsapp", ignoreCase = true) -> "WhatsApp"
+                else -> "Notificare"
+            }
         }
 
-        if (sender.isEmpty()) {
+        if (message.isEmpty() && sender.isNotEmpty()) {
+            message = sender
+            sender = appName
+        } else if (sender.isEmpty()) {
             sender = appName
         }
 
@@ -231,7 +249,18 @@ class CarNotificationListenerService : NotificationListenerService() {
             pkg == "com.google.android.apps.messaging" ||
             pkg == "com.samsung.android.messaging") return true
 
-        // 5. Alte aplicatii populare de chat
+        // 5. Gmail si aplicatii de email
+        if (pkg == "com.google.android.gm" ||
+            pkg.contains("gmail", ignoreCase = true) ||
+            pkg.contains("email", ignoreCase = true) ||
+            pkg.contains("mail", ignoreCase = true)) return true
+
+        // 6. Home Assistant
+        if (pkg.contains("homeassistant", ignoreCase = true) ||
+            pkg == "io.homeassistant.companion.android" ||
+            pkg == "io.homeassistant.companion.android.minimal") return true
+
+        // 7. Alte aplicatii populare de chat
         if (pkg.contains("telegram", ignoreCase = true) ||
             pkg.contains("securesms", ignoreCase = true) || // Signal
             pkg.contains("viber", ignoreCase = true) ||
@@ -239,8 +268,12 @@ class CarNotificationListenerService : NotificationListenerService() {
             pkg.contains("discord", ignoreCase = true) ||
             pkg.contains("skype", ignoreCase = true)) return true
 
-        // 6. Categorie Android directa
-        if (n.category == Notification.CATEGORY_MESSAGE) return true
+        // 8. Categorie Android directa
+        if (n.category == Notification.CATEGORY_MESSAGE ||
+            n.category == Notification.CATEGORY_EMAIL ||
+            n.category == Notification.CATEGORY_EVENT ||
+            n.category == Notification.CATEGORY_REMINDER ||
+            n.category == Notification.CATEGORY_ALARM) return true
 
         return false
     }
