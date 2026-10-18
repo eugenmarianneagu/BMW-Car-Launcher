@@ -2024,6 +2024,14 @@ class MainActivity : AppCompatActivity() {
                     actionIcon.setImageResource(R.drawable.ic_media_play)
                 }
 
+                val btnDelete = view.findViewById<FrameLayout>(R.id.btn_delete_station)
+                btnDelete.isFocusable = true
+                btnDelete.isFocusableInTouchMode = false
+                btnDelete.enableInstantClickOnTouch()
+                btnDelete.setOnClickListener {
+                    showDeleteStationDialog(position, station.name)
+                }
+
                 view.setOnClickListener {
                     radioOverlayContainer.visibility = View.GONE
                     focusPlayPauseButton()
@@ -2046,6 +2054,30 @@ class MainActivity : AppCompatActivity() {
         btnCloseRadio.isFocusable = true
         btnCloseRadio.isFocusableInTouchMode = false
         btnCloseRadio.enableInstantClickOnTouch()
+    }
+
+    private fun showDeleteStationDialog(position: Int, stationName: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Ștergere Post Radio")
+            .setMessage("Sigur doriți să ștergeți postul \"$stationName\" din listă?")
+            .setPositiveButton("Șterge") { _, _ ->
+                if (position in 0 until stations.size) {
+                    val wasPlayingThis = (currentMode == CenterMode.RADIO && controller?.currentMediaItemIndex == position)
+                    if (wasPlayingThis) {
+                        try {
+                            controller?.pause()
+                        } catch (_: Exception) {}
+                    }
+                    stations.removeAt(position)
+                    StationManager.saveStations(this, stations)
+                    refreshStations()
+                    reloadServicePlaylist()
+                    (listRadioStations.adapter as? BaseAdapter)?.notifyDataSetChanged()
+                    Toast.makeText(this, "Postul \"$stationName\" a fost șters", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Anulează", null)
+            .show()
     }
 
     private fun showAddStationDialog() {

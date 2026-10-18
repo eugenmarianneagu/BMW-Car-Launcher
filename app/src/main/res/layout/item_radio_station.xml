@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="62dp"
     android:orientation="horizontal"
@@ -74,6 +75,25 @@
             android:layout_height="20dp"
             android:layout_gravity="center"
             android:src="@drawable/ic_media_play" />
+    </FrameLayout>
+
+    <!-- Buton Ștergere Post -->
+    <FrameLayout
+        android:id="@+id/btn_delete_station"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:layout_marginStart="10dp"
+        android:background="@drawable/bg_radio_btn_delete"
+        android:clickable="true"
+        android:focusable="true"
+        android:focusableInTouchMode="false">
+
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_gravity="center"
+            android:src="@drawable/ic_delete"
+            app:tint="#FF5555" />
     </FrameLayout>
 
 </LinearLayout>
