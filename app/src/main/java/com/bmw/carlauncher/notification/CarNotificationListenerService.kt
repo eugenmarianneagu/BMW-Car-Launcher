@@ -35,6 +35,13 @@ class CarNotificationListenerService : NotificationListenerService() {
 
         val n = sbn.notification ?: return
 
+        // Ignorăm notificările de tip Group Summary (ex: "2 new messages", "3 mesaje din 2 conversații")
+        // pentru a nu suprascrie mesajul individual primit
+        if ((n.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
+            Log.d(TAG, "Ignorare group summary notification pentru $pkg")
+            return
+        }
+
         // Verificăm dacă este o aplicație de comunicare / mesaje
         val isMessagingApp = isMessageSource(pkg, n)
         if (!isMessagingApp) return
@@ -48,6 +55,12 @@ class CarNotificationListenerService : NotificationListenerService() {
             ?: ""
 
         if (rawTitle.isEmpty() && rawText.isEmpty()) return
+
+        // Ignorăm texte de rezumat colectiv
+        if (rawText.matches(Regex("^\\d+\\s+(new messages|mesaje noi).*", RegexOption.IGNORE_CASE))) {
+            Log.d(TAG, "Ignorare text rezumat generic: $rawText")
+            return
+        }
 
         var sender = rawTitle
         var message = rawText
@@ -99,6 +112,22 @@ class CarNotificationListenerService : NotificationListenerService() {
             null
         }
 
+        // 3. Extragere actiune de redare directa (daca aplicatia a expus un Notification.Action)
+        var playAction: android.app.PendingIntent? = null
+        val actions = n.actions
+        if (actions != null) {
+            for (action in actions) {
+                val actionTitle = action.title?.toString()?.lowercase() ?: ""
+                if (actionTitle.contains("play") ||
+                    actionTitle.contains("redare") ||
+                    actionTitle.contains("ascult") ||
+                    actionTitle.contains("listen")) {
+                    playAction = action.actionIntent
+                    break
+                }
+            }
+        }
+
         val carNotif = CarNotification(
             key = sbn.key,
             packageName = pkg,
@@ -108,6 +137,7 @@ class CarNotificationListenerService : NotificationListenerService() {
             timestamp = sbn.postTime,
             isVoiceMessage = isVoice,
             contentIntent = n.contentIntent,
+            playActionIntent = playAction,
             appIcon = appIcon
         )
 

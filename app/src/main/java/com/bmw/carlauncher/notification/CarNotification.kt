@@ -12,5 +12,6 @@ data class CarNotification(
     val timestamp: Long,
     val isVoiceMessage: Boolean,
     val contentIntent: PendingIntent?,
+    val playActionIntent: PendingIntent? = null,
     val appIcon: Drawable? = null
 )

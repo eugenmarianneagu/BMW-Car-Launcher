@@ -94,9 +94,11 @@ import java.util.Date
 import java.util.Locale
 import android.speech.tts.TextToSpeech
 import android.widget.ImageButton
+import android.os.Environment
 import com.bmw.carlauncher.notification.CarNotification
 import com.bmw.carlauncher.notification.CarNotificationHub
 import com.bmw.carlauncher.notification.CarNotificationListenerService
+import com.bmw.carlauncher.notification.VoiceMessagePlayer
 
 class MainActivity : AppCompatActivity() {
 
@@ -587,28 +589,35 @@ class MainActivity : AppCompatActivity() {
         tvNotifActionText = findViewById(R.id.tv_notif_action_text)
         btnNotifSpeak = findViewById(R.id.btn_notif_speak)
 
+        btnNotifClose.isFocusable = true
+        btnNotifClose.isFocusableInTouchMode = false
+        btnNotifClose.enableInstantClickOnTouch()
         btnNotifClose.setOnClickListener {
             dismissNotification()
         }
 
-        viewCenterNotification.setOnClickListener {
-            dismissNotification()
-        }
+        btnNotifAction.isFocusable = true
+        btnNotifAction.isFocusableInTouchMode = false
+        btnNotifAction.enableInstantClickOnTouch()
+
+        btnNotifSpeak.isFocusable = true
+        btnNotifSpeak.isFocusableInTouchMode = false
+        btnNotifSpeak.enableInstantClickOnTouch()
 
         btnNotifAction.setOnClickListener {
             val notif = activeNotification ?: return@setOnClickListener
-            notifDismissHandler.removeCallbacks(notifDismissRunnable)
-            try {
-                if (notif.contentIntent != null) {
-                    notif.contentIntent.send()
+            if (notif.isVoiceMessage) {
+                if (VoiceMessagePlayer.isPlaying()) {
+                    VoiceMessagePlayer.pause()
+                } else if (VoiceMessagePlayer.getCurrentFile() != null) {
+                    VoiceMessagePlayer.resume()
                 } else {
-                    val launchIntent = packageManager.getLaunchIntentForPackage(notif.packageName)
-                    if (launchIntent != null) {
-                        startActivity(launchIntent)
-                    }
+                    notifDismissHandler.removeCallbacks(notifDismissRunnable)
+                    playVoiceMessageOrFallback(notif)
                 }
-            } catch (e: Exception) {
-                Log.e("MainActivity", "Eroare la deschiderea notificarii: ${e.message}")
+            } else {
+                notifDismissHandler.removeCallbacks(notifDismissRunnable)
+                fallbackOpenNotification(notif)
             }
         }
 
@@ -616,6 +625,43 @@ class MainActivity : AppCompatActivity() {
             val notif = activeNotification ?: return@setOnClickListener
             notifDismissHandler.removeCallbacks(notifDismissRunnable)
             speakNotification(notif)
+        }
+
+        VoiceMessagePlayer.listener = object : VoiceMessagePlayer.PlaybackListener {
+            override fun onPlaybackStarted() {
+                runOnUiThread {
+                    notifDismissHandler.removeCallbacks(notifDismissRunnable)
+                    tvNotifActionText.text = "PAUZĂ"
+                    ivNotifActionIcon.setImageResource(R.drawable.ic_media_pause)
+                }
+            }
+
+            override fun onPlaybackPaused() {
+                runOnUiThread {
+                    tvNotifActionText.text = "REIA"
+                    ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
+                }
+            }
+
+            override fun onPlaybackCompleted() {
+                runOnUiThread {
+                    tvNotifActionText.text = "REDARE"
+                    ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
+                    notifDismissHandler.removeCallbacks(notifDismissRunnable)
+                    notifDismissHandler.postDelayed(notifDismissRunnable, 8000L)
+                }
+            }
+
+            override fun onPlaybackError(error: String) {
+                runOnUiThread {
+                    tvNotifActionText.text = "REDARE"
+                    ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
+                    val notif = activeNotification
+                    if (notif != null) {
+                        fallbackOpenNotification(notif)
+                    }
+                }
+            }
         }
 
         // Initializare Text to Speech
@@ -2095,10 +2141,23 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnOpenNotifSettings.setOnClickListener {
-            try {
-                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-            } catch (e: Exception) {
-                Toast.makeText(this, "Deschide Setări -> Notificări", Toast.LENGTH_SHORT).show()
+            val isNotifGranted = CarNotificationListenerService.isNotificationAccessGranted(this)
+            val isStorageGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+            if (!isNotifGranted) {
+                try {
+                    startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                } catch (e: Exception) {
+                    Toast.makeText(this, "Deschide Setări -> Notificări", Toast.LENGTH_SHORT).show()
+                }
+            } else if (!isStorageGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (_: Exception) {}
+            } else {
+                Toast.makeText(this, "Accesul este deja configurat complet!", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -2115,9 +2174,16 @@ class MainActivity : AppCompatActivity() {
         seekNightBrightness.progress = nightBrightness
         tvNightBrightnessVal.text = "$nightBrightness%"
 
-        val isGranted = CarNotificationListenerService.isNotificationAccessGranted(this)
-        tvNotifAccessStatus.text = if (isGranted) "Activat (WhatsApp / SMS activ)" else "Inactiv • Apasă pentru configurare"
-        tvNotifAccessStatus.setTextColor(ContextCompat.getColor(this, if (isGranted) R.color.bmw_amber else R.color.bmw_gray_text))
+        val isNotifGranted = CarNotificationListenerService.isNotificationAccessGranted(this)
+        val isStorageGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+        val allOk = isNotifGranted && isStorageGranted
+
+        tvNotifAccessStatus.text = when {
+            allOk -> "Activat (WhatsApp / SMS / Note Vocale)"
+            !isNotifGranted -> "Inactiv • Necesită Acces Notificări"
+            else -> "Atenție • Necesită Acces Fișiere (Note Vocale)"
+        }
+        tvNotifAccessStatus.setTextColor(ContextCompat.getColor(this, if (allOk) R.color.bmw_amber else R.color.bmw_gray_text))
 
         settingsOverlayContainer.visibility = View.VISIBLE
         btnCloseSettings.isFocusable = true
@@ -2616,6 +2682,7 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         isInForeground = false
+        VoiceMessagePlayer.stop()
         energyHandler.removeCallbacks(energyPollRunnable)
         currentTaskId = taskId
         ExternalMediaManager.onLauncherPaused(this, taskId)
@@ -2635,6 +2702,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        VoiceMessagePlayer.stop()
+        VoiceMessagePlayer.listener = null
         energyHandler.removeCallbacksAndMessages(null)
         centerMapView.onDestroy()
         try {
@@ -2676,6 +2745,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun displayNotification(notif: CarNotification) {
         activeNotification = notif
+        VoiceMessagePlayer.stop()
         runOnUiThread {
             if (currentMode != CenterMode.NOTIFICATION) {
                 preNotificationMode = currentMode
@@ -2724,9 +2794,59 @@ class MainActivity : AppCompatActivity() {
 
     private fun dismissNotification() {
         notifDismissHandler.removeCallbacks(notifDismissRunnable)
+        VoiceMessagePlayer.stop()
         if (currentMode == CenterMode.NOTIFICATION) {
             currentMode = preNotificationMode
             updateCenterModeUI(animateFrom = CenterMode.NOTIFICATION)
+        }
+    }
+
+    private fun playVoiceMessageOrFallback(notif: CarNotification) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                startActivity(intent)
+                Toast.makeText(this, "Permite accesul la stocare pentru redarea mesajelor vocale", Toast.LENGTH_LONG).show()
+                return
+            } catch (_: Exception) {}
+        }
+
+        val voiceFile = VoiceMessagePlayer.findLatestVoiceNote(notif.packageName, notif.timestamp)
+        if (voiceFile != null && voiceFile.exists()) {
+            VoiceMessagePlayer.play(voiceFile)
+        } else if (notif.playActionIntent != null) {
+            try {
+                notif.playActionIntent.send()
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Eroare playActionIntent: ${e.message}")
+                fallbackOpenNotification(notif)
+            }
+        } else {
+            Toast.makeText(this, "Deschidere conversație WhatsApp...", Toast.LENGTH_SHORT).show()
+            fallbackOpenNotification(notif)
+        }
+    }
+
+    private fun fallbackOpenNotification(notif: CarNotification) {
+        try {
+            if (notif.contentIntent != null) {
+                notif.contentIntent.send()
+            } else {
+                val launchIntent = packageManager.getLaunchIntentForPackage(notif.packageName)
+                if (launchIntent != null) {
+                    startActivity(launchIntent)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Eroare la deschiderea notificarii: ${e.message}")
+            val launchIntent = packageManager.getLaunchIntentForPackage(notif.packageName)
+            if (launchIntent != null) {
+                try {
+                    startActivity(launchIntent)
+                } catch (_: Exception) {}
+            }
         }
     }
 
