@@ -128,6 +128,21 @@ class MainActivity : AppCompatActivity() {
                 instance?.dismissCallUI()
             }
         }
+
+        fun closeLauncher() {
+            instance?.let { act ->
+                act.runOnUiThread {
+                    Log.i("MainActivity", "closeLauncher: Inchidere automata solicitata la deconectarea ESP32...")
+                    try {
+                        act.controller?.stop()
+                    } catch (_: Exception) {}
+                    try {
+                        VoiceMessagePlayer.stop()
+                    } catch (_: Exception) {}
+                    act.finishAndRemoveTask()
+                }
+            }
+        }
     }
 
     data class FavoriteContact(
@@ -439,6 +454,10 @@ class MainActivity : AppCompatActivity() {
         refreshStations()
 
         instance = this
+        if (intent.getBooleanExtra("EXTRA_AUTO_CLOSE", false)) {
+            closeLauncher()
+            return
+        }
         checkAndRequestPhonePermissions()
         setupCallServiceListener()
         handleIncomingCallIntent(intent)
@@ -2642,6 +2661,10 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleIncomingCallIntent(intent)
+        if (intent.getBooleanExtra("EXTRA_AUTO_CLOSE", false)) {
+            closeLauncher()
+            return
+        }
         if (intent.getBooleanExtra("EXTRA_F12_RETURN", false)) {
             dismissAllOverlays()
         }
@@ -2723,6 +2746,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (instance == this) instance = null
         VoiceMessagePlayer.stop()
         VoiceMessagePlayer.listener = null
         energyHandler.removeCallbacksAndMessages(null)

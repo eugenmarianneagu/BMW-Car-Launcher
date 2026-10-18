@@ -165,6 +165,7 @@
                 <action android:name="com.bmw.carlauncher.ACTION_F12" />
                 <action android:name="com.bmw.carlauncher.RETURN_HOME" />
                 <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
             </intent-filter>
         </receiver>
 

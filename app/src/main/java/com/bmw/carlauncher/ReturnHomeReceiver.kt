@@ -38,6 +38,34 @@ class ReturnHomeReceiver : BroadcastReceiver() {
             } catch (_: Exception) {}
         }
 
+        if (action == BluetoothDevice.ACTION_ACL_DISCONNECTED) {
+            val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+            }
+            val devName = try { device?.name } catch (_: SecurityException) { null } ?: ""
+            Log.i(TAG, "Bluetooth device disconnected: '$devName', address=${device?.address}")
+
+            val isTargetDevice = devName.contains("BMW", ignoreCase = true) ||
+                    devName.contains("iDrive", ignoreCase = true) ||
+                    devName.contains("ESP32", ignoreCase = true)
+
+            if (!isTargetDevice) {
+                Log.d(TAG, "Dispozitiv Bluetooth deconectat ignorat (nu este BMW/iDrive): '$devName'")
+                return
+            }
+
+            Log.i(TAG, "BMW iDrive deconectat! Inchidere automata BMW Car Launcher...")
+            try {
+                android.widget.Toast.makeText(context, "BMW iDrive deconectat", android.widget.Toast.LENGTH_SHORT).show()
+            } catch (_: Exception) {}
+
+            MainActivity.closeLauncher()
+            return
+        }
+
         launchMainActivity(context)
     }
 
