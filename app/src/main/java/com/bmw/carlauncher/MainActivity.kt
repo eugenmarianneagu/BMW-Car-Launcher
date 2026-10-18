@@ -2457,7 +2457,13 @@ class MainActivity : AppCompatActivity() {
             .apply()
 
         if (showToast) {
-            val msg = if (night) "Mod Nocturn Activ • Luminozitate 10%" else "Mod Zi Activ • Luminozitate 90%"
+            val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
+            val percent = if (night) {
+                prefs.getInt("night_brightness", 10).coerceIn(5, 100)
+            } else {
+                prefs.getInt("day_brightness", 90).coerceIn(5, 100)
+            }
+            val msg = if (night) "Mod Nocturn Activ • Luminozitate $percent%" else "Mod Zi Activ • Luminozitate $percent%"
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
     }
