@@ -132,13 +132,32 @@ class MainActivity : AppCompatActivity() {
         fun closeLauncher() {
             instance?.let { act ->
                 act.runOnUiThread {
-                    Log.i("MainActivity", "closeLauncher: Inchidere automata solicitata la deconectarea ESP32...")
+                    Log.i("MainActivity", "closeLauncher: Oprire muzică și închidere automată la deconectarea ESP32...")
+                    // 1. Oprește radioul intern
                     try {
+                        act.controller?.pause()
                         act.controller?.stop()
                     } catch (_: Exception) {}
+                    // 2. Oprește YouTube Web dacă este activ
+                    try {
+                        if (act.isYouTubeWebMode && act.isYouTubeWebPlaying) {
+                            act.youtubeWebView?.evaluateJavascript("window.__bmwUserPaused = true; var v = document.querySelector('video'); if (v) v.pause();", null)
+                            act.isYouTubeWebPlaying = false
+                        }
+                    } catch (_: Exception) {}
+                    // 3. Pune pe pauză orice aplicație media externă conectată (Spotify, YouTube Music etc.)
+                    try {
+                        ExternalMediaManager.getActiveMusicController(act)?.transportControls?.pause()
+                    } catch (_: Exception) {}
+                    // 4. Oprește redarea mesajelor vocale și TTS
                     try {
                         VoiceMessagePlayer.stop()
                     } catch (_: Exception) {}
+                    try {
+                        act.textToSpeech?.stop()
+                    } catch (_: Exception) {}
+
+                    // 5. Închide launcherul complet
                     act.finishAndRemoveTask()
                 }
             }
@@ -316,6 +335,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvNightBrightnessVal: TextView
     private lateinit var btnOpenNotifSettings: LinearLayout
     private lateinit var tvNotifAccessStatus: TextView
+    private lateinit var btnToggleStartOnConnect: LinearLayout
+    private lateinit var switchStartOnConnect: androidx.appcompat.widget.SwitchCompat
+    private lateinit var btnToggleCloseOnDisconnect: LinearLayout
+    private lateinit var switchCloseOnDisconnect: androidx.appcompat.widget.SwitchCompat
 
     // Incoming / In-Call Overlay UI
     private lateinit var callOverlayContainer: FrameLayout
@@ -781,6 +804,10 @@ class MainActivity : AppCompatActivity() {
         tvNightBrightnessVal = findViewById(R.id.tv_night_brightness_val)
         btnOpenNotifSettings = findViewById(R.id.btn_open_notif_settings)
         tvNotifAccessStatus = findViewById(R.id.tv_notif_access_status)
+        btnToggleStartOnConnect = findViewById(R.id.btn_toggle_start_on_connect)
+        switchStartOnConnect = findViewById(R.id.switch_start_on_connect)
+        btnToggleCloseOnDisconnect = findViewById(R.id.btn_toggle_close_on_disconnect)
+        switchCloseOnDisconnect = findViewById(R.id.switch_close_on_disconnect)
 
         initSettingsOverlay()
 
@@ -2190,6 +2217,20 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Accesul este deja configurat complet!", Toast.LENGTH_SHORT).show()
             }
         }
+
+        btnToggleStartOnConnect.setOnClickListener {
+            val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
+            val newState = !switchStartOnConnect.isChecked
+            switchStartOnConnect.isChecked = newState
+            prefs.edit().putBoolean("start_on_idrive_connect", newState).apply()
+        }
+
+        btnToggleCloseOnDisconnect.setOnClickListener {
+            val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
+            val newState = !switchCloseOnDisconnect.isChecked
+            switchCloseOnDisconnect.isChecked = newState
+            prefs.edit().putBoolean("close_on_idrive_disconnect", newState).apply()
+        }
     }
 
     private fun showSettingsOverlay() {
@@ -2203,6 +2244,11 @@ class MainActivity : AppCompatActivity() {
 
         seekNightBrightness.progress = nightBrightness
         tvNightBrightnessVal.text = "$nightBrightness%"
+
+        val startOnConnect = prefs.getBoolean("start_on_idrive_connect", true)
+        val closeOnDisconnect = prefs.getBoolean("close_on_idrive_disconnect", true)
+        switchStartOnConnect.isChecked = startOnConnect
+        switchCloseOnDisconnect.isChecked = closeOnDisconnect
 
         val isNotifGranted = CarNotificationListenerService.isNotificationAccessGranted(this)
         val isStorageGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
@@ -3207,6 +3253,8 @@ class MainActivity : AppCompatActivity() {
                 if (::seekDayBrightness.isInitialized && seekDayBrightness.visibility == View.VISIBLE) views.add(seekDayBrightness)
                 if (::seekNightBrightness.isInitialized && seekNightBrightness.visibility == View.VISIBLE) views.add(seekNightBrightness)
                 if (::btnOpenNotifSettings.isInitialized && btnOpenNotifSettings.visibility == View.VISIBLE) views.add(btnOpenNotifSettings)
+                if (::btnToggleStartOnConnect.isInitialized && btnToggleStartOnConnect.visibility == View.VISIBLE) views.add(btnToggleStartOnConnect)
+                if (::btnToggleCloseOnDisconnect.isInitialized && btnToggleCloseOnDisconnect.visibility == View.VISIBLE) views.add(btnToggleCloseOnDisconnect)
             }
             callOverlayContainer -> {
                 val ringing = findViewById<View>(R.id.call_ringing_actions)

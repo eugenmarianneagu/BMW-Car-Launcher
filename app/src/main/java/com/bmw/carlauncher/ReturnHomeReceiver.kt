@@ -12,7 +12,15 @@ class ReturnHomeReceiver : BroadcastReceiver() {
         val action = intent.action ?: return
         Log.i(TAG, "ReturnHomeReceiver triggered with action: $action")
 
+        val prefs = context.getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
+
         if (action == BluetoothDevice.ACTION_ACL_CONNECTED) {
+            val startEnabled = prefs.getBoolean("start_on_idrive_connect", true)
+            if (!startEnabled) {
+                Log.d(TAG, "Pornire automată la conectare iDrive dezactivată din setări.")
+                return
+            }
+
             val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
             } else {
@@ -39,6 +47,12 @@ class ReturnHomeReceiver : BroadcastReceiver() {
         }
 
         if (action == BluetoothDevice.ACTION_ACL_DISCONNECTED) {
+            val closeEnabled = prefs.getBoolean("close_on_idrive_disconnect", true)
+            if (!closeEnabled) {
+                Log.d(TAG, "Închidere automată la deconectare iDrive dezactivată din setări.")
+                return
+            }
+
             val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
             } else {
