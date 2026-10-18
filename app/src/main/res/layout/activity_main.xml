@@ -914,6 +914,245 @@
                         android:visibility="gone" />
                 </FrameLayout>
 
+                <!-- 6. HOME ASSISTANT SOLAR & ENERGY VIEW -->
+                <RelativeLayout
+                    android:id="@+id/view_center_energy"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_circle_clip"
+                    android:clipToOutline="true"
+                    android:paddingStart="26dp"
+                    android:paddingEnd="26dp"
+                    android:paddingTop="20dp"
+                    android:paddingBottom="20dp"
+                    android:visibility="gone">
+
+                    <!-- Header mic: SOLAR & ENERGY -->
+                    <TextView
+                        android:id="@+id/energy_header_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentTop="true"
+                        android:layout_centerHorizontal="true"
+                        android:layout_marginTop="6dp"
+                        android:text="⚡ SOLAR &amp; STORAGE"
+                        android:textColor="@color/bmw_amber"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="0.12" />
+
+                    <!-- STÂNGA: SOLAR & CONSUM CASĂ -->
+                    <LinearLayout
+                        android:id="@+id/energy_left_col"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentStart="true"
+                        android:layout_centerVertical="true"
+                        android:orientation="vertical"
+                        android:gravity="start">
+
+                        <!-- 1. Solar PV -->
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical">
+
+                            <ImageView
+                                android:layout_width="14dp"
+                                android:layout_height="14dp"
+                                android:src="@drawable/ic_sun"
+                                app:tint="@color/bmw_amber" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:text="SOLAR"
+                                android:textColor="@color/bmw_gray_text"
+                                android:textSize="9sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/tv_energy_solar_power"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0 W"
+                            android:textColor="@color/bmw_white"
+                            android:textSize="15sp"
+                            android:textStyle="bold" />
+
+                        <!-- Spațiator -->
+                        <View
+                            android:layout_width="1dp"
+                            android:layout_height="14dp" />
+
+                        <!-- 2. Consum Casă -->
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical">
+
+                            <ImageView
+                                android:layout_width="14dp"
+                                android:layout_height="14dp"
+                                android:src="@drawable/ic_energy_home"
+                                app:tint="@color/bmw_amber" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:text="CONSUM CASĂ"
+                                android:textColor="@color/bmw_gray_text"
+                                android:textSize="9sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/tv_energy_house_load"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0 W"
+                            android:textColor="@color/bmw_white"
+                            android:textSize="15sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <!-- CENTRU: SOC BATERIE -->
+                    <LinearLayout
+                        android:id="@+id/energy_center_col"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_centerInParent="true"
+                        android:gravity="center"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="BATERIE"
+                            android:textColor="@color/bmw_amber"
+                            android:textSize="9sp"
+                            android:textStyle="bold"
+                            android:letterSpacing="0.08" />
+
+                        <TextView
+                            android:id="@+id/tv_energy_battery_soc"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="--"
+                            android:textColor="@color/bmw_amber_light"
+                            android:textSize="34sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tv_energy_battery_status"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="SOC"
+                            android:textColor="@color/bmw_white"
+                            android:textSize="9sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <!-- DREAPTA: TENSIUNE BATERIE & PUTERE BATERIE -->
+                    <LinearLayout
+                        android:id="@+id/energy_right_col"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentEnd="true"
+                        android:layout_centerVertical="true"
+                        android:orientation="vertical"
+                        android:gravity="end">
+
+                        <!-- 1. Tensiune Baterie -->
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginEnd="4dp"
+                                android:text="TENSIUNE"
+                                android:textColor="@color/bmw_gray_text"
+                                android:textSize="9sp"
+                                android:textStyle="bold" />
+
+                            <ImageView
+                                android:layout_width="14dp"
+                                android:layout_height="14dp"
+                                android:src="@drawable/ic_energy_bolt"
+                                app:tint="@color/bmw_amber" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/tv_energy_battery_voltage"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0.0 V"
+                            android:textColor="@color/bmw_white"
+                            android:textSize="15sp"
+                            android:textStyle="bold" />
+
+                        <!-- Spațiator -->
+                        <View
+                            android:layout_width="1dp"
+                            android:layout_height="14dp" />
+
+                        <!-- 2. Putere Baterie -->
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginEnd="4dp"
+                                android:text="PUTERE BAT."
+                                android:textColor="@color/bmw_gray_text"
+                                android:textSize="9sp"
+                                android:textStyle="bold" />
+
+                            <ImageView
+                                android:layout_width="14dp"
+                                android:layout_height="14dp"
+                                android:src="@drawable/ic_energy_battery"
+                                app:tint="@color/bmw_amber" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/tv_energy_battery_power"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0 W"
+                            android:textColor="@color/bmw_white"
+                            android:textSize="15sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <!-- Footer: Ultima actualizare / Status -->
+                    <TextView
+                        android:id="@+id/tv_energy_last_update"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentBottom="true"
+                        android:layout_centerHorizontal="true"
+                        android:layout_marginBottom="16dp"
+                        android:text="ACTUALIZARE LIVE • HOME ASSISTANT"
+                        android:textColor="@color/bmw_gray_dim"
+                        android:textSize="8sp"
+                        android:letterSpacing="0.04" />
+
+                </RelativeLayout>
+
             </FrameLayout>
         </FrameLayout>
 

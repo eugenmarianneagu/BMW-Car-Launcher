@@ -60,6 +60,7 @@ import android.widget.GridView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
+import android.widget.RelativeLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -127,7 +128,7 @@ class MainActivity : AppCompatActivity() {
     )
 
     enum class CenterMode {
-        BMW, MEDIA, RADIO, MAP
+        BMW, MEDIA, RADIO, MAP, ENERGY
     }
 
     private var currentMode = CenterMode.BMW
@@ -217,6 +218,25 @@ class MainActivity : AppCompatActivity() {
     private lateinit var centerSpeedValue: TextView
     private lateinit var centerSpeedUnit: TextView
     private lateinit var centerSpeedSub: TextView
+
+    // Solar & Energy Center View UI
+    private lateinit var viewCenterEnergy: RelativeLayout
+    private lateinit var tvEnergySolarPower: TextView
+    private lateinit var tvEnergyHouseLoad: TextView
+    private lateinit var tvEnergyBatterySoc: TextView
+    private lateinit var tvEnergyBatteryStatus: TextView
+    private lateinit var tvEnergyBatteryVoltage: TextView
+    private lateinit var tvEnergyBatteryPower: TextView
+    private lateinit var tvEnergyLastUpdate: TextView
+    private val energyHandler = Handler(Looper.getMainLooper())
+    private val energyPollRunnable = object : Runnable {
+        override fun run() {
+            if (isInForeground && currentMode == CenterMode.ENERGY) {
+                fetchAndDisplayEnergyData()
+                energyHandler.postDelayed(this, 5000L)
+            }
+        }
+    }
 
     // Favorites Overlay UI
     private lateinit var favoritesOverlayContainer: FrameLayout
@@ -512,6 +532,18 @@ class MainActivity : AppCompatActivity() {
         centerSpeedUnit = findViewById(R.id.center_speed_unit)
         centerSpeedSub = findViewById(R.id.center_speed_sub)
 
+        // Solar & Energy View
+        viewCenterEnergy = findViewById(R.id.view_center_energy)
+        viewCenterEnergy.outlineProvider = circleOutlineProvider
+        viewCenterEnergy.clipToOutline = true
+        tvEnergySolarPower = findViewById(R.id.tv_energy_solar_power)
+        tvEnergyHouseLoad = findViewById(R.id.tv_energy_house_load)
+        tvEnergyBatterySoc = findViewById(R.id.tv_energy_battery_soc)
+        tvEnergyBatteryStatus = findViewById(R.id.tv_energy_battery_status)
+        tvEnergyBatteryVoltage = findViewById(R.id.tv_energy_battery_voltage)
+        tvEnergyBatteryPower = findViewById(R.id.tv_energy_battery_power)
+        tvEnergyLastUpdate = findViewById(R.id.tv_energy_last_update)
+
         // Inițializare Fereastră Contacte Favorite (Half-Screen Overlay)
         favoritesOverlayContainer = findViewById(R.id.favorites_overlay_container)
         btnCloseFavorites = findViewById(R.id.btn_close_favorites)
@@ -643,6 +675,7 @@ class MainActivity : AppCompatActivity() {
         viewCenterMedia.enableInstantClickOnTouch()
         youtubeCircleTouchOverlay.enableInstantClickOnTouch()
         viewCenterMap.enableInstantClickOnTouch()
+        viewCenterEnergy.enableInstantClickOnTouch()
 
         // Butoane din ferestrele auxiliare - clic instant la prima atingere
         val overlayButtons = listOf(
@@ -1392,6 +1425,7 @@ class MainActivity : AppCompatActivity() {
         CenterMode.MEDIA -> viewCenterMedia
         CenterMode.RADIO -> viewCenterRadio
         CenterMode.MAP -> viewCenterMap
+        CenterMode.ENERGY -> viewCenterEnergy
     }
 
     private fun cycleCenterMode() {
@@ -1400,7 +1434,8 @@ class MainActivity : AppCompatActivity() {
             CenterMode.BMW -> CenterMode.MEDIA
             CenterMode.MEDIA -> CenterMode.RADIO
             CenterMode.RADIO -> CenterMode.MAP
-            CenterMode.MAP -> CenterMode.BMW
+            CenterMode.MAP -> CenterMode.ENERGY
+            CenterMode.ENERGY -> CenterMode.BMW
         }
         updateCenterModeUI(animateFrom = previousMode)
 
@@ -1575,6 +1610,13 @@ class MainActivity : AppCompatActivity() {
                 val speedKmh = if (loc.hasSpeed()) loc.speed * 3.6f else 0f
                 updateMapLibreCamera(loc, speedKmh, force = true)
             }
+        }
+
+        if (currentMode == CenterMode.ENERGY) {
+            energyHandler.removeCallbacks(energyPollRunnable)
+            energyPollRunnable.run()
+        } else {
+            energyHandler.removeCallbacks(energyPollRunnable)
         }
 
         when (currentMode) {
@@ -2444,11 +2486,16 @@ class MainActivity : AppCompatActivity() {
         centerMapView.onResume()
         registerGnssCallback()
         focusPlayPauseButton()
+        if (currentMode == CenterMode.ENERGY) {
+            energyHandler.removeCallbacks(energyPollRunnable)
+            energyPollRunnable.run()
+        }
     }
 
     override fun onPause() {
         super.onPause()
         isInForeground = false
+        energyHandler.removeCallbacks(energyPollRunnable)
         currentTaskId = taskId
         ExternalMediaManager.onLauncherPaused(this, taskId)
         centerMapView.onPause()
@@ -2467,7 +2514,63 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        energyHandler.removeCallbacksAndMessages(null)
         centerMapView.onDestroy()
+    }
+
+    private fun fetchAndDisplayEnergyData() {
+        HomeAssistantManager.fetchEnergyData(this) { data ->
+            if (!isInForeground || currentMode != CenterMode.ENERGY) return@fetchEnergyData
+
+            // 1. STÂNGA: Solar & Consum Casă
+            val solarText = if (data.solarPower >= 1000f) {
+                String.format(java.util.Locale.US, "%.1f kW", data.solarPower / 1000f)
+            } else {
+                "${data.solarPower.toInt()} W"
+            }
+            tvEnergySolarPower.text = solarText
+
+            val houseText = if (data.houseLoad >= 1000f) {
+                String.format(java.util.Locale.US, "%.1f kW", data.houseLoad / 1000f)
+            } else {
+                "${data.houseLoad.toInt()} W"
+            }
+            tvEnergyHouseLoad.text = houseText
+
+            // 2. CENTRU: SOC Baterie
+            tvEnergyBatterySoc.text = "${data.batterySoc}%"
+            val isCharging = data.batteryPower > 20f
+            val isDischarging = data.batteryPower < -20f
+            tvEnergyBatteryStatus.text = when {
+                isCharging -> "⚡ ÎNCĂRCARE"
+                isDischarging -> "🔋 DESCĂRCARE"
+                else -> "STANDBY"
+            }
+            tvEnergyBatteryStatus.setTextColor(when {
+                isCharging -> android.graphics.Color.parseColor("#4CAF50")
+                isDischarging -> android.graphics.Color.parseColor("#FFA033")
+                else -> android.graphics.Color.parseColor("#8E929B")
+            })
+
+            // 3. DREAPTA: Tensiune Baterie & Putere Baterie
+            tvEnergyBatteryVoltage.text = String.format(java.util.Locale.US, "%.1f V", data.batteryVoltage)
+
+            val batPowerAbs = kotlin.math.abs(data.batteryPower)
+            val batPowerStr = if (batPowerAbs >= 1000f) {
+                String.format(java.util.Locale.US, "%.1f kW", data.batteryPower / 1000f)
+            } else {
+                "${data.batteryPower.toInt()} W"
+            }
+            tvEnergyBatteryPower.text = batPowerStr
+
+            // Footer
+            val timeFmt = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+            tvEnergyLastUpdate.text = if (data.isSuccess) {
+                "ACTUALIZAT LA $timeFmt • HOME ASSISTANT"
+            } else {
+                "CONEXIUNE ÎN AȘTEPTARE ($timeFmt)"
+            }
+        }
     }
 
     private fun setNightMode(night: Boolean, showToast: Boolean = true) {
