@@ -25,6 +25,7 @@ import android.location.GnssStatus
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.media.AudioAttributes
 import android.media.AudioManager
 import android.net.Uri
 import android.os.BatteryManager
@@ -2748,6 +2749,12 @@ class MainActivity : AppCompatActivity() {
                     if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
                         textToSpeech?.language = Locale.getDefault()
                     }
+                    val audioAttributes = AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .setLegacyStreamType(AudioManager.STREAM_MUSIC)
+                        .build()
+                    textToSpeech?.setAudioAttributes(audioAttributes)
                     textToSpeech?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
                         override fun onStart(utteranceId: String?) {}
                         override fun onDone(utteranceId: String?) {
