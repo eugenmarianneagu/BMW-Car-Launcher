@@ -84,7 +84,7 @@ object ExternalMediaManager {
     private var autoReturnArmTime: Long = 0L
     private var autoReturnInitialTitle: String = ""
     private var autoReturnInitialPlaying: Boolean = false
-    private var autoReturnSawNonPlaying: Boolean = false
+    private var userSawPausedWhileArmed: Boolean = false
     private var bgSawYtMusicNonPlaying: Boolean = false
     private var lastAutoReturnTriggerTime: Long = 0L
 
@@ -95,7 +95,7 @@ object ExternalMediaManager {
                 return
             }
             val elapsed = SystemClock.elapsedRealtime() - autoReturnArmTime
-            if (elapsed > 120_000L) {
+            if (elapsed > 180_000L) {
                 cancelAutoReturn()
                 return
             }
@@ -120,8 +120,7 @@ object ExternalMediaManager {
         val ytCtrl = findYtMusicController(context)
         val pbState = ytCtrl?.playbackState?.state ?: PlaybackState.STATE_NONE
         autoReturnInitialPlaying = (pbState == PlaybackState.STATE_PLAYING)
-        autoReturnSawNonPlaying = !autoReturnInitialPlaying
-        bgSawYtMusicNonPlaying = !autoReturnInitialPlaying
+        userSawPausedWhileArmed = false
         val meta = ytCtrl?.metadata
         autoReturnInitialTitle = meta?.getString(MediaMetadata.METADATA_KEY_TITLE)
             ?: meta?.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE)
@@ -135,7 +134,7 @@ object ExternalMediaManager {
     fun onLauncherPaused(context: Context, taskId: Int) {
         appContext = context.applicationContext
         if (taskId != -1) launcherTaskId = taskId
-        // Do NOT poll or return if auto-return was not armed by user launching YT Music
+        // Nu facem absolut nimic daca nu a fost lansat YT Music din launcher
         if (!autoReturnArmed) {
             return
         }
@@ -143,8 +142,7 @@ object ExternalMediaManager {
         val pbState = ytCtrl?.playbackState?.state ?: PlaybackState.STATE_NONE
         val isPlayingNow = (pbState == PlaybackState.STATE_PLAYING)
         if (!isPlayingNow) {
-            bgSawYtMusicNonPlaying = true
-            autoReturnSawNonPlaying = true
+            userSawPausedWhileArmed = true
         }
         mainHandler.removeCallbacks(autoReturnPollRunnable)
         mainHandler.postDelayed(autoReturnPollRunnable, 400L)
@@ -152,6 +150,7 @@ object ExternalMediaManager {
 
     fun cancelAutoReturn() {
         autoReturnArmed = false
+        userSawPausedWhileArmed = false
         bgSawYtMusicNonPlaying = false
         mainHandler.removeCallbacks(autoReturnPollRunnable)
     }
@@ -167,13 +166,14 @@ object ExternalMediaManager {
     }
 
     private fun checkAutoReturn(pkg: String, title: String, pbState: Int?, isPlaying: Boolean) {
-        // Numai daca a fost inarmat explicit la lansarea YouTube Music
+        // Numai daca a fost inarmat explicit la lansarea YouTube Music din launcher
         if (!autoReturnArmed) return
         if (!pkg.contains("youtube.music", ignoreCase = true)) return
 
-        val activelyPlaying = (pbState == PlaybackState.STATE_PLAYING) || (pbState == null && isPlaying)
-        if (!activelyPlaying) {
-            bgSawYtMusicNonPlaying = true
+        val isNowPlaying = (pbState == PlaybackState.STATE_PLAYING) || (pbState == null && isPlaying)
+        if (!isNowPlaying) {
+            // Melodia este oprita/pe pauza in timp ce utilizatorul e in YT Music
+            userSawPausedWhileArmed = true
             return
         }
 
@@ -186,19 +186,31 @@ object ExternalMediaManager {
         val now = SystemClock.elapsedRealtime()
         if (now - lastAutoReturnTriggerTime < 1500L) return
 
-        // Declanșează revenirea numai dacă a fost armat și au trecut minim 800ms de la deschiderea YT Music
-        if (now - autoReturnArmTime >= 800L) {
-            val titleChanged = title.isNotEmpty() && title != autoReturnInitialTitle
-            val wasPausedNowPlaying = bgSawYtMusicNonPlaying || autoReturnSawNonPlaying || !autoReturnInitialPlaying
-            if (titleChanged || wasPausedNowPlaying || (now - autoReturnArmTime >= 3000L)) {
-                autoReturnArmed = false
-                bgSawYtMusicNonPlaying = false
-                lastAutoReturnTriggerTime = now
-                mainHandler.removeCallbacks(autoReturnPollRunnable)
-                mainHandler.postDelayed({
-                    bringLauncherToFront()
-                }, 250L)
-            }
+        // Nu declanșăm în primele 800ms de la lansare (pentru a evita captarea stării vechi)
+        if (now - autoReturnArmTime < 800L) return
+
+        // Verificam daca utilizatorul a apasat EXPLICIT Play in YT Music:
+        val explicitPlayPressed = if (!autoReturnInitialPlaying) {
+            // Nu canta cand a deschis aplicatia, iar acum a dat Play pe o piesa
+            true
+        } else {
+            // Canta deja cand a plecat din launcher:
+            // Revine DOAR daca utilizatorul a pus pauza si a apasat Play din nou,
+            // sau a selectat o melodie diferita (titlul s-a schimbat):
+            val titleChanged = title.isNotEmpty() && autoReturnInitialTitle.isNotEmpty() && !title.equals(autoReturnInitialTitle, ignoreCase = true)
+            userSawPausedWhileArmed || titleChanged
+        }
+
+        // Declanșează revenirea STRICT dacă a fost detectată acțiunea explicită de Play
+        if (explicitPlayPressed) {
+            autoReturnArmed = false
+            userSawPausedWhileArmed = false
+            bgSawYtMusicNonPlaying = false
+            lastAutoReturnTriggerTime = now
+            mainHandler.removeCallbacks(autoReturnPollRunnable)
+            mainHandler.postDelayed({
+                bringLauncherToFront()
+            }, 300L)
         }
     }
 
