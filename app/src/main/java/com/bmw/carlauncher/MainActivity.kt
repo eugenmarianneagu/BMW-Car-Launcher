@@ -594,18 +594,18 @@ class MainActivity : AppCompatActivity() {
         btnNotifSpeak = findViewById(R.id.btn_notif_speak)
 
         btnNotifClose.isFocusable = true
-        btnNotifClose.isFocusableInTouchMode = false
+        btnNotifClose.isFocusableInTouchMode = true
         btnNotifClose.enableInstantClickOnTouch()
         btnNotifClose.setOnClickListener {
             dismissNotification()
         }
 
         btnNotifAction.isFocusable = true
-        btnNotifAction.isFocusableInTouchMode = false
+        btnNotifAction.isFocusableInTouchMode = true
         btnNotifAction.enableInstantClickOnTouch()
 
         btnNotifSpeak.isFocusable = true
-        btnNotifSpeak.isFocusableInTouchMode = false
+        btnNotifSpeak.isFocusableInTouchMode = true
         btnNotifSpeak.enableInstantClickOnTouch()
 
         btnNotifAction.setOnClickListener {
@@ -2829,9 +2829,19 @@ class MainActivity : AppCompatActivity() {
                 btnNotifSpeak.visibility = View.VISIBLE
             }
 
+            // Permite focalizarea copiilor din interiorul cercului central
+            centerCircle.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+
             // Auto-dismiss dupa 15 secunde
             notifDismissHandler.removeCallbacks(notifDismissRunnable)
             notifDismissHandler.postDelayed(notifDismissRunnable, 15000L)
+
+            // Focalizare automata pe butonul de actiune principala
+            btnNotifAction.isFocusable = true
+            btnNotifAction.isFocusableInTouchMode = true
+            btnNotifAction.post {
+                btnNotifAction.requestFocus()
+            }
         }
     }
 
@@ -2841,6 +2851,7 @@ class MainActivity : AppCompatActivity() {
             VoiceMessagePlayer.stop()
             resumeOtherPlayersAfterVoiceMessage()
         }
+        centerCircle.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
         if (currentMode == CenterMode.NOTIFICATION) {
             currentMode = preNotificationMode
             updateCenterModeUI(animateFrom = CenterMode.NOTIFICATION)
@@ -3097,6 +3108,9 @@ class MainActivity : AppCompatActivity() {
         if (::musicOverlayContainer.isInitialized && musicOverlayContainer.visibility == View.VISIBLE) return musicOverlayContainer
         if (::appsOverlayContainer.isInitialized && appsOverlayContainer.visibility == View.VISIBLE) return appsOverlayContainer
         if (::settingsOverlayContainer.isInitialized && settingsOverlayContainer.visibility == View.VISIBLE) return settingsOverlayContainer
+        if (::viewCenterNotification.isInitialized && viewCenterNotification.visibility == View.VISIBLE && currentMode == CenterMode.NOTIFICATION) {
+            return viewCenterNotification
+        }
         return null
     }
 
@@ -3112,6 +3126,11 @@ class MainActivity : AppCompatActivity() {
     private fun getOverlayFocusableViews(overlay: ViewGroup): List<View> {
         val views = mutableListOf<View>()
         when (overlay) {
+            viewCenterNotification -> {
+                if (::btnNotifAction.isInitialized && btnNotifAction.visibility == View.VISIBLE) views.add(btnNotifAction)
+                if (::btnNotifSpeak.isInitialized && btnNotifSpeak.visibility == View.VISIBLE) views.add(btnNotifSpeak)
+                if (::btnNotifClose.isInitialized && btnNotifClose.visibility == View.VISIBLE) views.add(btnNotifClose)
+            }
             favoritesOverlayContainer -> {
                 if (::btnCloseFavorites.isInitialized && btnCloseFavorites.visibility == View.VISIBLE) views.add(btnCloseFavorites)
                 if (::btnOpenDialer.isInitialized && btnOpenDialer.visibility == View.VISIBLE) views.add(btnOpenDialer)
@@ -3227,6 +3246,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val focusableViews = getOverlayFocusableViews(overlay)
+        Log.d("MainActivity", "handleOverlayTabNavigation: overlay=$overlay, focusableCount=${focusableViews.size}, current=$current")
         if (focusableViews.isEmpty()) return true
 
         val currentIndex = focusableViews.indexOfFirst { it == current || (current != null && isViewDescendantOf(current, it)) }
@@ -3240,9 +3260,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         val target = focusableViews[nextIndex]
+        Log.d("MainActivity", "handleOverlayTabNavigation: currentIndex=$currentIndex, nextIndex=$nextIndex, target=$target")
         target.isFocusable = true
         target.isFocusableInTouchMode = true
-        target.requestFocus()
+        val reqRes = target.requestFocus()
+        Log.d("MainActivity", "handleOverlayTabNavigation: requestFocus result=$reqRes, hasFocus=${target.hasFocus()}")
         return true
     }
 
