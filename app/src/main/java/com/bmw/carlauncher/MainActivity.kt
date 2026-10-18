@@ -638,6 +638,7 @@ class MainActivity : AppCompatActivity() {
 
         btnNotifClose.isFocusable = true
         btnNotifClose.isFocusableInTouchMode = true
+        btnNotifClose.enableInstantClickOnTouch()
         btnNotifClose.setOnClickListener {
             dismissNotification()
         }
@@ -645,10 +646,12 @@ class MainActivity : AppCompatActivity() {
         btnNotifAction.isFocusable = true
         btnNotifAction.isFocusableInTouchMode = true
         btnNotifAction.isClickable = true
+        btnNotifAction.enableInstantClickOnTouch()
 
         btnNotifSpeak.isFocusable = true
         btnNotifSpeak.isFocusableInTouchMode = true
         btnNotifSpeak.isClickable = true
+        btnNotifSpeak.enableInstantClickOnTouch()
 
         btnNotifAction.setOnClickListener {
             val notif = activeNotification ?: return@setOnClickListener
@@ -3561,8 +3564,9 @@ class MainActivity : AppCompatActivity() {
                 MotionEvent.ACTION_UP -> {
                     longPressHandler.removeCallbacks(longPressRunnable)
                     v.isPressed = false
-                    if (!isLongClicked && event.x >= 0 && event.x <= v.width &&
-                        event.y >= 0 && event.y <= v.height) {
+                    val slop = ViewConfiguration.get(v.context).scaledTouchSlop
+                    if (!isLongClicked && event.x >= -slop && event.x <= v.width + slop &&
+                        event.y >= -slop && event.y <= v.height + slop) {
                         v.performClick()
                         return@setOnTouchListener true
                     }
