@@ -1163,6 +1163,8 @@
                     android:layout_height="match_parent"
                     android:background="@drawable/bg_circle_clip"
                     android:clipToOutline="true"
+                    android:clickable="true"
+                    android:focusable="false"
                     android:paddingStart="26dp"
                     android:paddingEnd="26dp"
                     android:paddingTop="26dp"
@@ -1307,14 +1309,15 @@
                         <LinearLayout
                             android:id="@+id/btn_notif_action"
                             android:layout_width="wrap_content"
-                            android:layout_height="32dp"
+                            android:layout_height="36dp"
+                            android:minWidth="105dp"
                             android:background="@drawable/bg_notif_action_btn"
                             android:clickable="true"
                             android:focusable="true"
                             android:gravity="center"
                             android:orientation="horizontal"
-                            android:paddingStart="14dp"
-                            android:paddingEnd="14dp">
+                            android:paddingStart="16dp"
+                            android:paddingEnd="16dp">
 
                             <ImageView
                                 android:id="@+id/iv_notif_action_icon"
@@ -1340,15 +1343,16 @@
                         <LinearLayout
                             android:id="@+id/btn_notif_speak"
                             android:layout_width="wrap_content"
-                            android:layout_height="32dp"
+                            android:layout_height="36dp"
+                            android:minWidth="95dp"
                             android:layout_marginStart="10dp"
                             android:background="@drawable/bg_panel_action_btn"
                             android:clickable="true"
                             android:focusable="true"
                             android:gravity="center"
                             android:orientation="horizontal"
-                            android:paddingStart="12dp"
-                            android:paddingEnd="12dp">
+                            android:paddingStart="14dp"
+                            android:paddingEnd="14dp">
 
                             <ImageView
                                 android:id="@+id/iv_notif_speak_icon"

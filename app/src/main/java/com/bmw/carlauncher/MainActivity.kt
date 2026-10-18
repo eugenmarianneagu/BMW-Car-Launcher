@@ -1,6 +1,7 @@
 package com.bmw.carlauncher
 
 import android.app.ActivityManager
+import android.app.ActivityOptions
 import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.ComponentName
@@ -637,21 +638,21 @@ class MainActivity : AppCompatActivity() {
 
         btnNotifClose.isFocusable = true
         btnNotifClose.isFocusableInTouchMode = true
-        btnNotifClose.enableInstantClickOnTouch()
         btnNotifClose.setOnClickListener {
             dismissNotification()
         }
 
         btnNotifAction.isFocusable = true
         btnNotifAction.isFocusableInTouchMode = true
-        btnNotifAction.enableInstantClickOnTouch()
+        btnNotifAction.isClickable = true
 
         btnNotifSpeak.isFocusable = true
         btnNotifSpeak.isFocusableInTouchMode = true
-        btnNotifSpeak.enableInstantClickOnTouch()
+        btnNotifSpeak.isClickable = true
 
         btnNotifAction.setOnClickListener {
             val notif = activeNotification ?: return@setOnClickListener
+            Log.i("MainActivity", "btnNotifAction apasat! isVoice=${notif.isVoiceMessage}, pkg=${notif.packageName}")
             if (notif.isVoiceMessage) {
                 if (VoiceMessagePlayer.isPlaying()) {
                     VoiceMessagePlayer.pause()
@@ -663,12 +664,13 @@ class MainActivity : AppCompatActivity() {
                 }
             } else {
                 notifDismissHandler.removeCallbacks(notifDismissRunnable)
-                fallbackOpenNotification(notif)
+                openNotification(notif)
             }
         }
 
         btnNotifSpeak.setOnClickListener {
             val notif = activeNotification ?: return@setOnClickListener
+            Log.i("MainActivity", "btnNotifSpeak apasat pentru pkg=${notif.packageName}")
             notifDismissHandler.removeCallbacks(notifDismissRunnable)
             speakNotification(notif)
         }
@@ -708,7 +710,7 @@ class MainActivity : AppCompatActivity() {
                     resetNotifDismissTimer()
                     val notif = activeNotification
                     if (notif != null) {
-                        fallbackOpenNotification(notif)
+                        openNotification(notif)
                     }
                 }
             }
@@ -3033,34 +3035,83 @@ class MainActivity : AppCompatActivity() {
             VoiceMessagePlayer.play(voiceFile)
         } else if (notif.playActionIntent != null) {
             try {
-                notif.playActionIntent.send()
+                val optionsBundle = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    try {
+                        ActivityOptions.makeBasic().apply {
+                            setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                        }.toBundle()
+                    } catch (_: Exception) {
+                        ActivityOptions.makeBasic().toBundle()
+                    }
+                } else {
+                    ActivityOptions.makeBasic().toBundle()
+                }
+                notif.playActionIntent.send(this, 0, null, null, null, null, optionsBundle)
             } catch (e: Exception) {
                 Log.e("MainActivity", "Eroare playActionIntent: ${e.message}")
-                fallbackOpenNotification(notif)
+                openNotification(notif)
             }
         } else {
-            Toast.makeText(this, "Deschidere conversație WhatsApp...", Toast.LENGTH_SHORT).show()
-            fallbackOpenNotification(notif)
+            Toast.makeText(this, "Deschidere conversație...", Toast.LENGTH_SHORT).show()
+            openNotification(notif)
         }
     }
 
-    private fun fallbackOpenNotification(notif: CarNotification) {
-        try {
-            if (notif.contentIntent != null) {
-                notif.contentIntent.send()
-            } else {
-                val launchIntent = packageManager.getLaunchIntentForPackage(notif.packageName)
-                if (launchIntent != null) {
-                    startActivity(launchIntent)
+    private fun openNotification(notif: CarNotification) {
+        Log.i("MainActivity", "Deschidere notificare pentru: ${notif.packageName}, app=${notif.appName}")
+        dismissNotification()
+
+        val optionsBundle = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            try {
+                ActivityOptions.makeBasic().apply {
+                    setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                }.toBundle()
+            } catch (e: Exception) {
+                Log.w("MainActivity", "Eroare setPendingIntentBackgroundActivityStartMode: ${e.message}")
+                ActivityOptions.makeBasic().toBundle()
+            }
+        } else {
+            ActivityOptions.makeBasic().toBundle()
+        }
+
+        var intentSenderOpened = false
+        if (notif.contentIntent != null) {
+            try {
+                startIntentSender(
+                    notif.contentIntent.intentSender,
+                    null,
+                    Intent.FLAG_ACTIVITY_NEW_TASK,
+                    Intent.FLAG_ACTIVITY_NEW_TASK,
+                    0,
+                    optionsBundle
+                )
+                intentSenderOpened = true
+                Log.i("MainActivity", "startIntentSender executat cu succes pentru ${notif.packageName}")
+            } catch (e: Exception) {
+                Log.w("MainActivity", "startIntentSender a esuat (${e.message}), se incearca direct send()...")
+                try {
+                    notif.contentIntent.send(this, 0, null, null, null, null, optionsBundle)
+                    intentSenderOpened = true
+                    Log.i("MainActivity", "contentIntent.send executat cu succes pentru ${notif.packageName}")
+                } catch (e2: Exception) {
+                    Log.e("MainActivity", "contentIntent.send a esuat: ${e2.message}")
                 }
             }
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Eroare la deschiderea notificarii: ${e.message}")
-            val launchIntent = packageManager.getLaunchIntentForPackage(notif.packageName)
-            if (launchIntent != null) {
-                try {
+        }
+
+        // Daca nu a reusit prin PendingIntent sau e null (ex. com.android.shell sau PendingIntent anulat), lansam direct pachetul aplicatiei
+        if (!intentSenderOpened) {
+            try {
+                val launchIntent = packageManager.getLaunchIntentForPackage(notif.packageName)
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
                     startActivity(launchIntent)
-                } catch (_: Exception) {}
+                    Log.i("MainActivity", "Lansat cu succes prin launchIntent: ${notif.packageName}")
+                } else {
+                    Log.w("MainActivity", "Nu s-a gasit launch intent pentru: ${notif.packageName}")
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Eroare la deschiderea fallback a aplicatiei ${notif.packageName}: ${e.message}")
             }
         }
     }
