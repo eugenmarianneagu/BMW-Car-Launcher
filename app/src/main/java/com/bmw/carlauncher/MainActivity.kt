@@ -60,6 +60,7 @@ import android.widget.GridView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -239,6 +240,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var appsOverlayContainer: FrameLayout
     private lateinit var btnCloseApps: ImageView
     private lateinit var gridAllApps: GridView
+
+    // Settings Overlay UI
+    private lateinit var settingsOverlayContainer: FrameLayout
+    private lateinit var btnCloseSettings: ImageView
+    private lateinit var seekDayBrightness: SeekBar
+    private lateinit var seekNightBrightness: SeekBar
+    private lateinit var tvDayBrightnessVal: TextView
+    private lateinit var tvNightBrightnessVal: TextView
 
     // Incoming / In-Call Overlay UI
     private lateinit var callOverlayContainer: FrameLayout
@@ -572,6 +581,16 @@ class MainActivity : AppCompatActivity() {
             focusPlayPauseButton()
         }
 
+        // Inițializare Fereastră Setări Aplicație
+        settingsOverlayContainer = findViewById(R.id.settings_overlay_container)
+        btnCloseSettings = findViewById(R.id.btn_close_settings)
+        seekDayBrightness = findViewById(R.id.seek_day_brightness)
+        seekNightBrightness = findViewById(R.id.seek_night_brightness)
+        tvDayBrightnessVal = findViewById(R.id.tv_day_brightness_val)
+        tvNightBrightnessVal = findViewById(R.id.tv_night_brightness_val)
+
+        initSettingsOverlay()
+
         // Inițializare Fereastră Apel Telefonic (Half-Screen Overlay)
         callOverlayContainer = findViewById(R.id.call_overlay_container)
         callPhotoFrame = findViewById(R.id.call_photo_frame)
@@ -630,6 +649,7 @@ class MainActivity : AppCompatActivity() {
             btnCloseFavorites, btnOpenDialer,
             btnCloseRadio, btnAddStation,
             btnCloseMusic, btnCloseApps,
+            btnCloseSettings,
             btnCallAnswer, btnCallDeny, btnCallHangup
         )
         overlayButtons.forEach { btn ->
@@ -1255,9 +1275,7 @@ class MainActivity : AppCompatActivity() {
             setNightMode(!isNightMode, showToast = true)
         }
         btnQuickSettings.setOnClickListener {
-            try {
-                startActivity(Intent(Settings.ACTION_SETTINGS))
-            } catch (_: Exception) {}
+            showSettingsOverlay()
         }
         btnQuickSettings.setOnLongClickListener {
             try {
@@ -1889,6 +1907,83 @@ class MainActivity : AppCompatActivity() {
         btnCloseApps.enableInstantClickOnTouch()
     }
 
+    private fun initSettingsOverlay() {
+        val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
+        val dayBrightness = prefs.getInt("day_brightness", 90).coerceIn(5, 100)
+        val nightBrightness = prefs.getInt("night_brightness", 10).coerceIn(5, 100)
+
+        seekDayBrightness.progress = dayBrightness
+        tvDayBrightnessVal.text = "$dayBrightness%"
+
+        seekNightBrightness.progress = nightBrightness
+        tvNightBrightnessVal.text = "$nightBrightness%"
+
+        seekDayBrightness.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                val clamped = progress.coerceIn(5, 100)
+                if (clamped != progress) {
+                    seekBar?.progress = clamped
+                }
+                tvDayBrightnessVal.text = "$clamped%"
+                if (fromUser) {
+                    prefs.edit().putInt("day_brightness", clamped).apply()
+                    if (!isNightMode) {
+                        applyScreenBrightness(false)
+                    }
+                }
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+
+        seekNightBrightness.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                val clamped = progress.coerceIn(5, 100)
+                if (clamped != progress) {
+                    seekBar?.progress = clamped
+                }
+                tvNightBrightnessVal.text = "$clamped%"
+                if (fromUser) {
+                    prefs.edit().putInt("night_brightness", clamped).apply()
+                    if (isNightMode) {
+                        applyScreenBrightness(true)
+                    }
+                }
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+
+        btnCloseSettings.setOnClickListener {
+            settingsOverlayContainer.visibility = View.GONE
+            focusPlayPauseButton()
+        }
+        settingsOverlayContainer.setOnClickListener {
+            settingsOverlayContainer.visibility = View.GONE
+            focusPlayPauseButton()
+        }
+    }
+
+    private fun showSettingsOverlay() {
+        dismissAllOverlays()
+        val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
+        val dayBrightness = prefs.getInt("day_brightness", 90).coerceIn(5, 100)
+        val nightBrightness = prefs.getInt("night_brightness", 10).coerceIn(5, 100)
+
+        seekDayBrightness.progress = dayBrightness
+        tvDayBrightnessVal.text = "$dayBrightness%"
+
+        seekNightBrightness.progress = nightBrightness
+        tvNightBrightnessVal.text = "$nightBrightness%"
+
+        settingsOverlayContainer.visibility = View.VISIBLE
+        btnCloseSettings.isFocusable = true
+        btnCloseSettings.isFocusableInTouchMode = false
+        btnCloseSettings.enableInstantClickOnTouch()
+    }
+
     private fun refreshStations() {
         stations = StationManager.getStations(this)
     }
@@ -2368,8 +2463,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyScreenBrightness(night: Boolean) {
+        val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
+        val dayPercent = prefs.getInt("day_brightness", 90).coerceIn(5, 100)
+        val nightPercent = prefs.getInt("night_brightness", 10).coerceIn(5, 100)
+        val percent = if (night) nightPercent else dayPercent
+
         val lp = window.attributes
-        lp.screenBrightness = if (night) 0.10f else 0.90f
+        lp.screenBrightness = (percent / 100f).coerceIn(0.05f, 1.0f)
         window.attributes = lp
     }
 
@@ -2423,6 +2523,7 @@ class MainActivity : AppCompatActivity() {
         if (::radioOverlayContainer.isInitialized && radioOverlayContainer.visibility == View.VISIBLE) return radioOverlayContainer
         if (::musicOverlayContainer.isInitialized && musicOverlayContainer.visibility == View.VISIBLE) return musicOverlayContainer
         if (::appsOverlayContainer.isInitialized && appsOverlayContainer.visibility == View.VISIBLE) return appsOverlayContainer
+        if (::settingsOverlayContainer.isInitialized && settingsOverlayContainer.visibility == View.VISIBLE) return settingsOverlayContainer
         return null
     }
 
@@ -2475,6 +2576,11 @@ class MainActivity : AppCompatActivity() {
                         if (child.visibility == View.VISIBLE) views.add(child)
                     }
                 }
+            }
+            settingsOverlayContainer -> {
+                if (::btnCloseSettings.isInitialized && btnCloseSettings.visibility == View.VISIBLE) views.add(btnCloseSettings)
+                if (::seekDayBrightness.isInitialized && seekDayBrightness.visibility == View.VISIBLE) views.add(seekDayBrightness)
+                if (::seekNightBrightness.isInitialized && seekNightBrightness.visibility == View.VISIBLE) views.add(seekNightBrightness)
             }
             callOverlayContainer -> {
                 val ringing = findViewById<View>(R.id.call_ringing_actions)
@@ -2649,6 +2755,9 @@ class MainActivity : AppCompatActivity() {
         }
         if (::appsOverlayContainer.isInitialized && appsOverlayContainer.visibility == View.VISIBLE) {
             appsOverlayContainer.visibility = View.GONE
+        }
+        if (::settingsOverlayContainer.isInitialized && settingsOverlayContainer.visibility == View.VISIBLE) {
+            settingsOverlayContainer.visibility = View.GONE
         }
     }
 
