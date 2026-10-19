@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">BMW Car Launcher</string>
-    <string name="accessibility_service_description">Permite tastelor trimise de ESP32 (de pe volan sau iDrive) sa readuca aplicatia BMW Car Launcher pe ecran din orice alta aplicatie.</string>
+    <string name="accessibility_service_description">Permite blocarea automată a ecranului la trecerea în modul Portret și revenirea instantanee la BMW Car Launcher prin tastatura Bluetooth sau iDrive.</string>
     <string name="accessibility_service_desc">Permite interceptarea tastei F12 de pe tastatura Bluetooth pentru a reveni instantaneu la BMW Car Launcher din orice aplicație.</string>
 </resources>

@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -54,15 +55,18 @@ class RadioService : MediaSessionService() {
 
     private val stopRadioReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "com.bmw.carlauncher.ACTION_STOP_RADIO") {
-                if (::player.isInitialized && player.isPlaying) {
+            if (intent?.action == ACTION_STOP_RADIO) {
+                if (::player.isInitialized) {
+                    player.playWhenReady = false
                     player.pause()
+                    player.stop()
                 }
             }
         }
     }
 
     companion object {
+        const val ACTION_STOP_RADIO = "com.bmw.carlauncher.ACTION_STOP_RADIO"
         const val ACTION_START_PLAY = "com.bmw.carlauncher.ACTION_START_PLAY"
         const val ACTION_RELOAD_STATIONS = "com.bmw.carlauncher.RELOAD_STATIONS"
         const val ACTION_RESTART_STANDBY = "com.bmw.carlauncher.RESTART_STANDBY"
@@ -115,8 +119,14 @@ class RadioService : MediaSessionService() {
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
-        // Porneste automat redarea (autoPlay = true) pentru a canta imediat la boot / ecran oprit & blocat
-        loadPlaylist(autoPlay = true)
+        val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
+        val forceMode = prefs.getString("force_display_mode", "auto") ?: "auto"
+        val isCarConnected = MainActivity.isCarConnectedState
+        val isPortrait = !isCarConnected && ((forceMode == "portrait") ||
+                (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT && forceMode != "landscape"))
+
+        // Porneste automat redarea doar in mod Landscape / Masina, NICIODATA in mod Portret
+        loadPlaylist(autoPlay = !isPortrait)
 
         player.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -199,13 +209,33 @@ class RadioService : MediaSessionService() {
         super.onStartCommand(intent, flags, startId)
         ensureForegroundStandby()
 
-        if (intent?.action == ACTION_RESTART_STANDBY) {
+        val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
+        val forceMode = prefs.getString("force_display_mode", "auto") ?: "auto"
+        val isCarConnected = MainActivity.isCarConnectedState
+        val isPortraitMode = !isCarConnected && ((forceMode == "portrait") ||
+                (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT && forceMode != "landscape"))
+
+        if (intent?.action == ACTION_START_PLAY) {
+            if (player.mediaItemCount == 0) {
+                loadPlaylist(autoPlay = true)
+            } else {
+                player.playWhenReady = true
+                if (player.playbackState == Player.STATE_IDLE) {
+                    player.prepare()
+                }
+                player.play()
+            }
+        } else if (intent?.action == ACTION_RESTART_STANDBY || isPortraitMode) {
             player.playWhenReady = false
             if (player.playbackState == Player.STATE_IDLE) {
                 player.prepare()
             }
+            if (isPortraitMode && player.isPlaying) {
+                player.pause()
+                player.stop()
+            }
         } else {
-            // ACTION_START_PLAY, BOOT_COMPLETED sau pornire initiala in fundal
+            // BOOT_COMPLETED sau pornire initiala in fundal
             player.playWhenReady = true
             if (player.playbackState == Player.STATE_IDLE) {
                 player.prepare()
@@ -413,7 +443,12 @@ class RestartReceiver : BroadcastReceiver() {
         val action = intent?.action
         val shouldStandby = (action == RadioService.ACTION_RESTART_STANDBY)
 
-        val targetAction = if (shouldStandby) {
+        val prefs = context.getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
+        val forceMode = prefs.getString("force_display_mode", "auto") ?: "auto"
+        val isPortraitMode = (forceMode == "portrait") ||
+                (context.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT && forceMode != "landscape")
+
+        val targetAction = if (shouldStandby || isPortraitMode) {
             RadioService.ACTION_RESTART_STANDBY
         } else {
             RadioService.ACTION_START_PLAY

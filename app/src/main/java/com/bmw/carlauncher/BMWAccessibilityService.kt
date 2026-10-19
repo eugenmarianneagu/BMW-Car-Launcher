@@ -5,6 +5,7 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.provider.Settings
 import android.text.TextUtils
 import android.util.Log
@@ -15,6 +16,7 @@ class BMWAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        instance = this
         try {
             val info = serviceInfo ?: AccessibilityServiceInfo()
             info.eventTypes = AccessibilityEvent.TYPES_ALL_MASK
@@ -83,8 +85,30 @@ class BMWAccessibilityService : AccessibilityService() {
         Log.d(TAG, "BMWAccessibilityService interrupted")
     }
 
+    override fun onDestroy() {
+        if (instance == this) instance = null
+        super.onDestroy()
+    }
+
     companion object {
         private const val TAG = "BMWAccessibility"
+        var instance: BMWAccessibilityService? = null
+            private set
+
+        fun lockScreen(): Boolean {
+            val s = instance ?: return false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                return try {
+                    val result = s.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
+                    Log.i(TAG, "performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN) returned: $result")
+                    result
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error locking screen via AccessibilityService: ${e.message}")
+                    false
+                }
+            }
+            return false
+        }
 
         fun isServiceEnabled(context: Context): Boolean {
             val expectedComponentName = ComponentName(context, BMWAccessibilityService::class.java)

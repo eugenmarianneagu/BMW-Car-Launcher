@@ -1,14 +1,25 @@
 package com.bmw.carlauncher
 
+import android.Manifest
 import android.app.ActivityManager
 import android.app.ActivityOptions
 import android.app.AlertDialog
+import android.app.KeyguardManager
+import android.os.PowerManager
+import android.bluetooth.BluetoothA2dp
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothHeadset
+import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import androidx.activity.result.contract.ActivityResultContracts
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -28,7 +39,10 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.media.AudioAttributes
 import android.media.AudioManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
+import android.telephony.TelephonyManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
@@ -39,6 +53,9 @@ import android.provider.Settings
 import android.app.role.RoleManager
 import android.telecom.TelecomManager
 import android.util.Log
+import android.content.res.Configuration
+import android.provider.MediaStore
+import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -105,6 +122,10 @@ import com.bmw.carlauncher.notification.VoiceMessagePlayer
 class MainActivity : AppCompatActivity() {
 
     companion object {
+        @Volatile
+        var isCarConnectedState: Boolean = false
+        @Volatile
+        var lastDisconnectTimestamp: Long = 0L
         @Volatile
         var isInForeground: Boolean = false
         @Volatile
@@ -297,6 +318,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var ivNotifActionIcon: ImageView
     private lateinit var tvNotifActionText: TextView
     private lateinit var btnNotifSpeak: LinearLayout
+    private var tvNotifCounter: TextView? = null
+    private var notifGestureDetector: GestureDetector? = null
+    private var isNotifSwipeHandled = false
     private var activeNotification: CarNotification? = null
     private var preNotificationMode: CenterMode = CenterMode.BMW
     private val notifDismissHandler = Handler(Looper.getMainLooper())
@@ -338,10 +362,110 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvNightBrightnessVal: TextView
     private lateinit var btnOpenNotifSettings: LinearLayout
     private lateinit var tvNotifAccessStatus: TextView
-    private lateinit var btnToggleStartOnConnect: LinearLayout
-    private lateinit var switchStartOnConnect: androidx.appcompat.widget.SwitchCompat
-    private lateinit var btnToggleCloseOnDisconnect: LinearLayout
-    private lateinit var switchCloseOnDisconnect: androidx.appcompat.widget.SwitchCompat
+    private lateinit var btnCarBtSelect: LinearLayout
+    private lateinit var tvCarBtStatus: TextView
+    private lateinit var btnToggleForceDisplayMode: LinearLayout
+    private lateinit var tvDisplayModeStatus: TextView
+    private lateinit var tvDisplayModeBadge: TextView
+    private var tvNavSourceLabel: TextView? = null
+    private var centerNavIconImg: ImageView? = null
+
+    // Bluetooth Car Detection & Orientation
+    private var a2dpProxy: BluetoothA2dp? = null
+    private var headsetProxy: BluetoothHeadset? = null
+    private var portraitGestureDetector: GestureDetector? = null
+
+    fun isPortraitOrientation(): Boolean {
+        return resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+    }
+
+    private val requestBtConnectPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            Log.i("MainActivity", "Permisiune BLUETOOTH_CONNECT acordata de utilizator")
+            initBluetoothProfiles()
+            checkBluetoothConnectionAndUpdateOrientation()
+        }
+    }
+
+    private val bluetoothReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val action = intent.action ?: return
+            Log.i("MainActivity", "Bluetooth broadcast event: $action")
+
+            val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+            }
+            val devAddress = device?.address ?: ""
+            val devName = try { device?.name } catch (_: SecurityException) { null } ?: ""
+
+            val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
+            val savedCarAddress = prefs.getString("car_bt_address", null)
+            val isCarDevice = if (!savedCarAddress.isNullOrEmpty()) {
+                devAddress.equals(savedCarAddress, ignoreCase = true)
+            } else {
+                devName.contains("BMW", ignoreCase = true) ||
+                devName.contains("iDrive", ignoreCase = true) ||
+                devName.contains("ESP32", ignoreCase = true)
+            }
+
+            when (action) {
+                BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
+                    if (isCarDevice && devAddress.isNotEmpty()) {
+                        Log.i("MainActivity", "Car device ACL disconnected: $devName ($devAddress)")
+                        prefs.edit().putString("force_display_mode", "auto").apply()
+                        isCarConnectedState = false
+                        lastDisconnectTimestamp = android.os.SystemClock.elapsedRealtime()
+                        checkBluetoothConnectionAndUpdateOrientation()
+                        lockScreenIfPossible()
+                    }
+                }
+                BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED -> {
+                    val state = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1)
+                    if (isCarDevice && state == BluetoothProfile.STATE_CONNECTED) {
+                        Log.i("MainActivity", "Car device A2DP connected: $devName")
+                        prefs.edit().putString("force_display_mode", "auto").apply()
+                        lastDisconnectTimestamp = 0L
+                        isCarConnectedState = true
+                        checkBluetoothConnectionAndUpdateOrientation()
+                    }
+                }
+                BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED -> {
+                    val state = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1)
+                    if (isCarDevice && state == BluetoothProfile.STATE_CONNECTED) {
+                        Log.i("MainActivity", "Car device Headset connected: $devName")
+                        prefs.edit().putString("force_display_mode", "auto").apply()
+                        lastDisconnectTimestamp = 0L
+                        isCarConnectedState = true
+                        checkBluetoothConnectionAndUpdateOrientation()
+                    }
+                }
+                BluetoothDevice.ACTION_ACL_CONNECTED -> {
+                    if (isCarDevice && devAddress.isNotEmpty()) {
+                        Log.i("MainActivity", "Car device ACL connected: $devName ($devAddress)")
+                        prefs.edit().putString("force_display_mode", "auto").apply()
+                        lastDisconnectTimestamp = 0L
+                        isCarConnectedState = true
+                        checkBluetoothConnectionAndUpdateOrientation()
+                    }
+                }
+                BluetoothAdapter.ACTION_STATE_CHANGED -> {
+                    val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1)
+                    if (state == BluetoothAdapter.STATE_OFF || state == BluetoothAdapter.STATE_TURNING_OFF) {
+                        Log.i("MainActivity", "Bluetooth adapter turned off")
+                        isCarConnectedState = false
+                        lastDisconnectTimestamp = android.os.SystemClock.elapsedRealtime()
+                        checkBluetoothConnectionAndUpdateOrientation()
+                        lockScreenIfPossible()
+                    }
+                }
+            }
+        }
+    }
 
     // Incoming / In-Call Overlay UI
     private lateinit var callOverlayContainer: FrameLayout
@@ -467,6 +591,14 @@ class MainActivity : AppCompatActivity() {
         // Initializare MapLibre Native SDK inainte de setContentView
         MapLibre.getInstance(this)
 
+        if (intent.getBooleanExtra("EXTRA_CAR_BT_CONNECTED", false)) {
+            isCarConnectedState = true
+        }
+
+        checkAndRequestBluetoothPermissions()
+        initBluetoothProfiles()
+        applyTargetOrientation()
+
         val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
         isNightMode = prefs.getBoolean("night_mode", true)
 
@@ -476,6 +608,9 @@ class MainActivity : AppCompatActivity() {
         initViews(savedInstanceState)
         setNightMode(isNightMode, showToast = false)
         setupListeners()
+        if (isPortraitOrientation()) {
+            stopAllAudioPlayers()
+        }
         updateCenterModeUI()
         refreshStations()
 
@@ -484,16 +619,23 @@ class MainActivity : AppCompatActivity() {
             closeLauncher()
             return
         }
+        if (intent.getBooleanExtra("EXTRA_CAR_BT_CONNECTED", false)) {
+            startRadioPlayback()
+        }
         checkAndRequestPhonePermissions()
         setupCallServiceListener()
         handleIncomingCallIntent(intent)
     }
 
-
-
     private fun enableImmersiveMode() {
-        // Mentine ecranul deschis in permanenta (Car Launcher)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // În modul Mașină (Landscape) dacă ecranul este activ, îl ținem deschis pe durata utilizării bordului.
+        // În modul Portret (Telefon) ecranul se oprește/blochează conform setărilor de sistem (screen timeout).
+        if (isPortraitOrientation() || determineTargetOrientation() == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
+            clearShowWhenLocked()
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
 
         // Permite desenarea bordului pe 100% din ecran fizic (inclusiv in jurul camerei de selfie, eliminand banda neagra)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -630,6 +772,7 @@ class MainActivity : AppCompatActivity() {
         ivNotifAppIcon = findViewById(R.id.iv_notif_app_icon)
         tvNotifAppName = findViewById(R.id.tv_notif_app_name)
         tvNotifTime = findViewById(R.id.tv_notif_time)
+        tvNotifCounter = findViewById(R.id.tv_notif_counter)
         btnNotifClose = findViewById(R.id.btn_notif_close)
         tvNotifSender = findViewById(R.id.tv_notif_sender)
         layoutNotifVoiceBadge = findViewById(R.id.layout_notif_voice_badge)
@@ -639,6 +782,8 @@ class MainActivity : AppCompatActivity() {
         ivNotifActionIcon = findViewById(R.id.iv_notif_action_icon)
         tvNotifActionText = findViewById(R.id.tv_notif_action_text)
         btnNotifSpeak = findViewById(R.id.btn_notif_speak)
+
+        setupNotifGestureDetector()
 
         btnNotifClose.isFocusable = true
         btnNotifClose.isFocusableInTouchMode = true
@@ -729,6 +874,17 @@ class MainActivity : AppCompatActivity() {
         // Abonare la evenimentele de notificare
         CarNotificationHub.onNotificationReceived = { notif ->
             displayNotification(notif)
+            if (isPortraitOrientation()) {
+                updateNetworkStatus()
+            }
+        }
+        CarNotificationHub.onUnreadCountChanged = { _ ->
+            if (isPortraitOrientation()) {
+                updateNetworkStatus()
+            }
+        }
+        CarNotificationHub.onNotificationsListChanged = { _ ->
+            checkAndShowPendingNotifications()
         }
         if (CarNotificationListenerService.isNotificationAccessGranted(this)) {
             CarNotificationListenerService.rebindService(this)
@@ -813,10 +969,14 @@ class MainActivity : AppCompatActivity() {
         tvNightBrightnessVal = findViewById(R.id.tv_night_brightness_val)
         btnOpenNotifSettings = findViewById(R.id.btn_open_notif_settings)
         tvNotifAccessStatus = findViewById(R.id.tv_notif_access_status)
-        btnToggleStartOnConnect = findViewById(R.id.btn_toggle_start_on_connect)
-        switchStartOnConnect = findViewById(R.id.switch_start_on_connect)
-        btnToggleCloseOnDisconnect = findViewById(R.id.btn_toggle_close_on_disconnect)
-        switchCloseOnDisconnect = findViewById(R.id.switch_close_on_disconnect)
+        btnCarBtSelect = findViewById(R.id.btn_car_bt_select)
+        tvCarBtStatus = findViewById(R.id.tv_car_bt_status)
+        btnToggleForceDisplayMode = findViewById(R.id.btn_toggle_force_display_mode)
+        tvDisplayModeStatus = findViewById(R.id.tv_display_mode_status)
+        tvDisplayModeBadge = findViewById(R.id.tv_display_mode_badge)
+
+        tvNavSourceLabel = findViewById(R.id.tv_nav_source_label)
+        centerNavIconImg = findViewById(R.id.center_nav_icon_img)
 
         initSettingsOverlay()
 
@@ -888,37 +1048,340 @@ class MainActivity : AppCompatActivity() {
             btn.enableInstantClickOnTouch()
         }
 
+        if (isPortraitOrientation()) {
+            setupPortraitMode()
+        }
+
         focusPlayPauseButton()
     }
 
     private fun initCenterMapView(savedInstanceState: Bundle?) {
-        centerMapView.onCreate(savedInstanceState)
-        centerMapView.getMapAsync { map ->
-            mapLibreMap = map
-            // Dezactivare elemente UI native pentru o integrare curata in cercul BMW
-            val ui = map.uiSettings
-            ui.isLogoEnabled = false
-            ui.isAttributionEnabled = false
-            ui.isCompassEnabled = false
+        // Harta 3D MapLibre este anulata si inlocuita cu notificarile de navigatie Google Maps
+        return
+    }
 
-            // Daca utilizatorul interactioneaza manual cu harta, oprim urmarirea automata si aratam butonul de recentrare
-            map.addOnMoveListener(object : MapLibreMap.OnMoveListener {
-                override fun onMoveBegin(detector: org.maplibre.android.gestures.MoveGestureDetector) {
-                    isMapTrackingGps = false
-                    btnMapRecenter.visibility = View.VISIBLE
+    private fun setupPortraitMode() {
+        // 1. Top status pill clic lung -> Deschide Setari
+        val topStatusPill = findViewById<View>(R.id.top_status_pill)
+        topStatusPill?.isLongClickable = true
+        topStatusPill?.setOnLongClickListener {
+            showSettingsOverlay()
+            true
+        }
+
+        // 2. Cercul central clic lung -> Deschide Setari
+        centerCircle.isLongClickable = true
+        centerCircle.setOnLongClickListener {
+            showSettingsOverlay()
+            true
+        }
+        viewCenterBmw.isLongClickable = true
+        viewCenterBmw.setOnLongClickListener {
+            showSettingsOverlay()
+            true
+        }
+
+        // 3. Indicator discret permisiune notificari
+        findViewById<View>(R.id.tv_portrait_notif_perm_indicator)?.setOnClickListener {
+            try {
+                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            } catch (_: Exception) {}
+        }
+
+        // 4. Buton Cancel / Inchide notificare in cercul din modul Portret
+        findViewById<View>(R.id.btn_notif_close_wrapper)?.setOnClickListener {
+            dismissNotification()
+        }
+
+        // 4b. Buton / Pill notificari din bara de sus deschide panoul de notificari al telefonului
+        findViewById<View>(R.id.port_notif_container)?.setOnClickListener {
+            openNotificationShade()
+        }
+
+        // 5. Grila de 8 aplicatii (Click transparent peste grafica de fundal cu ripple)
+        findViewById<View>(R.id.btn_port_gallery)?.setOnClickListener { launchGalleryApp() }
+        findViewById<View>(R.id.btn_port_facebook)?.setOnClickListener { launchFacebookApp() }
+        findViewById<View>(R.id.btn_port_play_store)?.setOnClickListener { launchPlayStoreApp() }
+        findViewById<View>(R.id.btn_port_files)?.setOnClickListener { launchFilesApp() }
+        findViewById<View>(R.id.btn_port_home_assistant)?.setOnClickListener { launchHomeAssistantApp() }
+        findViewById<View>(R.id.btn_port_notes)?.setOnClickListener { launchNotesApp() }
+        findViewById<View>(R.id.btn_port_wallet)?.setOnClickListener { launchWalletApp() }
+        findViewById<View>(R.id.btn_port_chrome)?.setOnClickListener { launchChromeApp() }
+
+        // 6. Dock-ul de jos (3 butoane principale)
+        findViewById<View>(R.id.btn_port_phone)?.setOnClickListener { launchPhoneDialer() }
+        findViewById<View>(R.id.btn_port_whatsapp)?.setOnClickListener { launchWhatsApp() }
+        findViewById<View>(R.id.btn_port_camera)?.setOnClickListener { launchCameraApp() }
+
+        val portraitInteractiveViews = listOfNotNull(
+            topStatusPill,
+            findViewById<View>(R.id.port_notif_container),
+            findViewById<View>(R.id.btn_port_gallery),
+            findViewById<View>(R.id.btn_port_facebook),
+            findViewById<View>(R.id.btn_port_play_store),
+            findViewById<View>(R.id.btn_port_files),
+            findViewById<View>(R.id.btn_port_home_assistant),
+            findViewById<View>(R.id.btn_port_notes),
+            findViewById<View>(R.id.btn_port_wallet),
+            findViewById<View>(R.id.btn_port_chrome),
+            findViewById<View>(R.id.btn_port_phone),
+            findViewById<View>(R.id.btn_port_whatsapp),
+            findViewById<View>(R.id.btn_port_camera),
+            findViewById<View>(R.id.btn_notif_close_wrapper),
+            findViewById<View>(R.id.tv_portrait_notif_perm_indicator)
+        )
+        portraitInteractiveViews.forEach { view ->
+            view.isFocusable = true
+            view.enableInstantClickOnTouch()
+        }
+
+        setupPortraitGestures()
+    }
+
+    private fun setupPortraitGestures() {
+        portraitGestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onFling(
+                e1: MotionEvent?,
+                e2: MotionEvent,
+                velocityX: Float,
+                velocityY: Float
+            ): Boolean {
+                if (e1 == null) return false
+                if (::appsOverlayContainer.isInitialized && appsOverlayContainer.visibility == View.VISIBLE) return false
+                if (::settingsOverlayContainer.isInitialized && settingsOverlayContainer.visibility == View.VISIBLE) return false
+                if (::favoritesOverlayContainer.isInitialized && favoritesOverlayContainer.visibility == View.VISIBLE) return false
+                if (::radioOverlayContainer.isInitialized && radioOverlayContainer.visibility == View.VISIBLE) return false
+                if (::musicOverlayContainer.isInitialized && musicOverlayContainer.visibility == View.VISIBLE) return false
+                if (::callOverlayContainer.isInitialized && callOverlayContainer.visibility == View.VISIBLE) return false
+
+                val diffY = e2.y - e1.y
+                val diffX = e2.x - e1.x
+                if (Math.abs(diffY) > Math.abs(diffX) && Math.abs(diffY) > 100 && Math.abs(velocityY) > 150) {
+                    if (diffY < 0) {
+                        // Swipe Up -> Sertar aplicatii
+                        openAllApps()
+                        return true
+                    } else {
+                        // Swipe Down -> Bara notificari
+                        expandStatusBar()
+                        return true
+                    }
                 }
-                override fun onMove(detector: org.maplibre.android.gestures.MoveGestureDetector) {}
-                override fun onMoveEnd(detector: org.maplibre.android.gestures.MoveGestureDetector) {}
-            })
-
-            // Click pe harta: comuta ecranul central ca si pe celelalte ecrane
-            map.addOnMapClickListener {
-                cycleCenterMode()
-                true
+                return false
             }
+        })
+    }
 
-            // Incarca stilul initial Day/Night
-            applyMapNightMode(isNightMode)
+    private fun expandStatusBar() {
+        try {
+            val statusBarService = getSystemService("statusbar")
+            val statusBarManager = Class.forName("android.app.StatusBarManager")
+            val expandMethod = statusBarManager.getMethod("expandNotificationsPanel")
+            expandMethod.invoke(statusBarService)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "expandStatusBar failed: ${e.message}")
+        }
+    }
+
+    private fun launchGalleryApp() {
+        val intent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_APP_GALLERY)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        if (intent.resolveActivity(packageManager) != null) {
+            try {
+                startActivity(intent)
+                return
+            } catch (_: Exception) {}
+        }
+        val packages = listOf(
+            "com.sec.android.gallery3d",
+            "com.google.android.apps.photos",
+            "com.android.gallery3d",
+            "com.miui.gallery"
+        )
+        for (pkg in packages) {
+            val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+            if (launchIntent != null) {
+                try {
+                    startActivity(launchIntent)
+                    return
+                } catch (_: Exception) {}
+            }
+        }
+        try {
+            val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+                type = "image/*"
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(viewIntent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Aplicație Galerie indisponibilă", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun launchFacebookApp() {
+        val pkg = "com.facebook.katana"
+        val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+            ?: packageManager.getLaunchIntentForPackage("com.facebook.lite")
+        if (launchIntent != null) {
+            try {
+                startActivity(launchIntent)
+                return
+            } catch (_: Exception) {}
+        }
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.facebook.com")).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            })
+        } catch (e: Exception) {
+            Toast.makeText(this, "Facebook nu este instalat", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun launchPlayStoreApp() {
+        val pkg = "com.android.vending"
+        val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+        if (launchIntent != null) {
+            try {
+                startActivity(launchIntent)
+                return
+            } catch (_: Exception) {}
+        }
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details")).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            })
+        } catch (e: Exception) {
+            Toast.makeText(this, "Google Play Store indisponibil", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun launchFilesApp() {
+        val packages = listOf(
+            "com.sec.android.app.myfiles",
+            "com.google.android.apps.nbu.files",
+            "com.android.documentsui",
+            "com.mi.android.globalFileexplorer"
+        )
+        for (pkg in packages) {
+            val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+            if (launchIntent != null) {
+                try {
+                    startActivity(launchIntent)
+                    return
+                } catch (_: Exception) {}
+            }
+        }
+        val intent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_APP_FILES)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        if (intent.resolveActivity(packageManager) != null) {
+            try {
+                startActivity(intent)
+                return
+            } catch (_: Exception) {}
+        }
+        try {
+            val docIntent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                type = "*/*"
+                addCategory(Intent.CATEGORY_OPENABLE)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(docIntent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Aplicație Fișiere indisponibilă", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun launchHomeAssistantApp() {
+        val pkg = "io.homeassistant.companion.android"
+        val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+            ?: packageManager.getLaunchIntentForPackage("io.homeassistant.companion.android.minimal")
+        if (launchIntent != null) {
+            try {
+                startActivity(launchIntent)
+            } catch (_: Exception) {}
+        } else {
+            Toast.makeText(this, "Home Assistant nu este instalat", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun launchNotesApp() {
+        val packages = listOf(
+            "com.samsung.android.app.notes",
+            "com.google.android.keep",
+            "com.miui.notes",
+            "com.microsoft.notes"
+        )
+        for (pkg in packages) {
+            val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+            if (launchIntent != null) {
+                try {
+                    startActivity(launchIntent)
+                    return
+                } catch (_: Exception) {}
+            }
+        }
+        try {
+            val intent = Intent(Intent.ACTION_CREATE_NOTE).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            if (intent.resolveActivity(packageManager) != null) {
+                startActivity(intent)
+                return
+            }
+        } catch (_: Exception) {}
+        Toast.makeText(this, "Aplicație de Note indisponibilă", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun launchWalletApp() {
+        val pkg = "com.google.android.apps.walletnfcrel"
+        val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+            ?: packageManager.getLaunchIntentForPackage("com.google.android.apps.walletnfcrel.staging")
+        if (launchIntent != null) {
+            try {
+                startActivity(launchIntent)
+            } catch (_: Exception) {}
+        } else {
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg")).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                })
+            } catch (e: Exception) {
+                Toast.makeText(this, "Google Wallet nu este instalat", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun launchChromeApp() {
+        val pkg = "com.android.chrome"
+        val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+        if (launchIntent != null) {
+            try {
+                startActivity(launchIntent)
+            } catch (_: Exception) {}
+        } else {
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com")).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(intent)
+            } catch (e: Exception) {
+                Toast.makeText(this, "Google Chrome indisponibil", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun launchCameraApp() {
+        try {
+            val intent = Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Camera foto indisponibilă", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1452,8 +1915,10 @@ class MainActivity : AppCompatActivity() {
                             am?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
                             am?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
                         }
-                        updatePlayPauseIcon(false)
-                    } else {
+                        if (isPortraitOrientation() || determineTargetOrientation() == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
+                            stopAllAudioPlayers()
+                            return@setOnClickListener
+                        }
                         try {
                             ExternalMediaManager.getActiveMusicController(this)?.transportControls?.pause()
                         } catch (_: Exception) {}
@@ -1532,6 +1997,18 @@ class MainActivity : AppCompatActivity() {
             cycleCenterMode()
         }
 
+        viewCenterEnergy.setOnClickListener {
+            cycleCenterMode()
+        }
+
+        viewCenterNotification.setOnClickListener {
+            if (isNotifSwipeHandled) {
+                isNotifSwipeHandled = false
+                return@setOnClickListener
+            }
+            cycleCenterMode()
+        }
+
         viewCenterRadio.setOnClickListener {
             cycleCenterMode()
         }
@@ -1591,9 +2068,19 @@ class MainActivity : AppCompatActivity() {
             true
         }
 
-        // L2: NAVI - Lanseaza Waze (sau Maps)
+        // L2: NAVI - Comută cercul central pe Navigare Google Maps sau lansează aplicația
         btnLeft2.setOnClickListener {
+            if (currentMode != CenterMode.MAP) {
+                val prev = currentMode
+                currentMode = CenterMode.MAP
+                updateCenterModeUI(animateFrom = prev)
+            } else {
+                launchNavigationApp()
+            }
+        }
+        btnLeft2.setOnLongClickListener {
             launchNavigationApp()
+            true
         }
 
         // L3: MUSIC - Deschide lista de selectie (YouTube Music / YouTube) si lanseaza aplicatia aleasa
@@ -1629,12 +2116,35 @@ class MainActivity : AppCompatActivity() {
         CenterMode.BMW -> viewCenterBmw
         CenterMode.MEDIA -> viewCenterMedia
         CenterMode.RADIO -> viewCenterRadio
-        CenterMode.MAP -> viewCenterMap
+        CenterMode.MAP -> viewCenterWaze
         CenterMode.ENERGY -> viewCenterEnergy
         CenterMode.NOTIFICATION -> viewCenterNotification
     }
 
     private fun cycleCenterMode() {
+        if (isPortraitOrientation()) {
+            val previousMode = currentMode
+            val hasNotifs = CarNotificationHub.unreadNotifications.isNotEmpty()
+            currentMode = when (currentMode) {
+                CenterMode.BMW -> if (hasNotifs) CenterMode.NOTIFICATION else CenterMode.ENERGY
+                CenterMode.NOTIFICATION -> CenterMode.ENERGY
+                CenterMode.ENERGY -> CenterMode.BMW
+                else -> CenterMode.BMW
+            }
+            if (currentMode == CenterMode.NOTIFICATION) {
+                val notif = activeNotification?.takeIf { act -> CarNotificationHub.unreadNotifications.any { it.key == act.key } }
+                    ?: CarNotificationHub.unreadNotifications.firstOrNull()
+                if (notif != null) {
+                    displayNotification(notif)
+                    return
+                }
+            }
+            updateCenterModeUI(animateFrom = previousMode)
+            if (currentMode == CenterMode.ENERGY) {
+                fetchAndDisplayEnergyData()
+            }
+            return
+        }
         val previousMode = currentMode
         currentMode = when (currentMode) {
             CenterMode.BMW -> CenterMode.MEDIA
@@ -1680,14 +2190,24 @@ class MainActivity : AppCompatActivity() {
         centerWazeRoad.text = data.road
         centerWazeEta.text = data.eta
 
-        val fullText = "${data.distance} ${data.road}".lowercase(Locale.getDefault())
-        centerWazeIcon.text = when {
-            fullText.contains("stanga") || fullText.contains("stânga") || fullText.contains("left") -> "↰"
-            fullText.contains("dreapta") || fullText.contains("right") -> "↱"
-            fullText.contains("giratoriu") || fullText.contains("roundabout") -> "⟳"
-            fullText.contains("inainte") || fullText.contains("înainte") || fullText.contains("straight") -> "↑"
-            fullText.contains("u-turn") || fullText.contains("intoarcere") || fullText.contains("întoarcere") -> "⤺"
-            else -> "🧭"
+        tvNavSourceLabel?.text = "NAVIGARE ${data.sourceApp}"
+
+        if (data.iconBitmap != null) {
+            centerNavIconImg?.setImageBitmap(data.iconBitmap)
+            centerNavIconImg?.visibility = View.VISIBLE
+            centerWazeIcon.visibility = View.GONE
+        } else {
+            centerNavIconImg?.visibility = View.GONE
+            centerWazeIcon.visibility = View.VISIBLE
+            val fullText = "${data.distance} ${data.road}".lowercase(Locale.getDefault())
+            centerWazeIcon.text = when {
+                fullText.contains("stanga") || fullText.contains("stânga") || fullText.contains("left") -> "↰"
+                fullText.contains("dreapta") || fullText.contains("right") -> "↱"
+                fullText.contains("giratoriu") || fullText.contains("roundabout") -> "⟳"
+                fullText.contains("inainte") || fullText.contains("înainte") || fullText.contains("straight") -> "↑"
+                fullText.contains("u-turn") || fullText.contains("intoarcere") || fullText.contains("întoarcere") -> "⤺"
+                else -> "🧭"
+            }
         }
     }
 
@@ -1910,15 +2430,118 @@ class MainActivity : AppCompatActivity() {
         val now = Date()
         val timeFormat = SimpleDateFormat("H:mm", Locale.getDefault())
         textClock.text = timeFormat.format(now)
+
+        if (isPortraitOrientation()) {
+            if (controller?.isPlaying == true || (isYouTubeWebMode && isYouTubeWebPlaying) || ExternalMediaManager.currentData.isPlaying) {
+                stopAllAudioPlayers()
+            }
+
+            updateNetworkStatus()
+
+            val dateView = findViewById<TextView>(R.id.portrait_date_text)
+            if (dateView != null) {
+                val dateFormat = SimpleDateFormat("EEEE, d MMMM", Locale("ro", "RO"))
+                val dateFormatted = dateFormat.format(now).replaceFirstChar {
+                    if (it.isLowerCase()) it.titlecase(Locale("ro", "RO")) else it.toString()
+                }
+                dateView.text = dateFormatted
+            }
+
+            val permIndicator = findViewById<TextView>(R.id.tv_portrait_notif_perm_indicator)
+            if (permIndicator != null) {
+                val hasAccess = CarNotificationListenerService.isNotificationAccessGranted(this)
+                permIndicator.visibility = if (!hasAccess) View.VISIBLE else View.GONE
+            }
+        }
+    }
+
+    private fun updateNetworkStatus() {
+        val netStatusView = findViewById<TextView>(R.id.port_network_status) ?: return
+        val signalIconView = findViewById<ImageView>(R.id.port_signal_icon)
+        val notifContainer = findViewById<View>(R.id.port_notif_container)
+        val notifCountView = findViewById<TextView>(R.id.port_notif_count)
+
+        // 1. Notificări necitite în bara de sus
+        val unreadCount = CarNotificationHub.getUnreadCount()
+        if (unreadCount > 0) {
+            notifContainer?.visibility = View.VISIBLE
+            notifCountView?.text = "$unreadCount"
+        } else {
+            notifContainer?.visibility = View.GONE
+        }
+
+        // 2. Semnal curat (doar bare verticale albe, fără fond) și tip rețea
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            val activeNet = cm?.activeNetwork
+            val caps = cm?.getNetworkCapabilities(activeNet)
+
+            if (caps == null || !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                signalIconView?.visibility = View.GONE
+                netStatusView.text = "📵 Lipsă semnal"
+                return
+            }
+
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                signalIconView?.setImageResource(R.drawable.ic_wifi_white)
+                signalIconView?.visibility = View.VISIBLE
+                netStatusView.text = "Wi-Fi"
+                return
+            }
+
+            signalIconView?.setImageResource(R.drawable.ic_cellular_signal_white)
+            signalIconView?.visibility = View.VISIBLE
+
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
+                val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+                val netType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    try {
+                        if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
+                            tm?.dataNetworkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
+                        } else {
+                            TelephonyManager.NETWORK_TYPE_UNKNOWN
+                        }
+                    } catch (_: Exception) {
+                        TelephonyManager.NETWORK_TYPE_UNKNOWN
+                    }
+                } else {
+                    @Suppress("DEPRECATION")
+                    tm?.networkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
+                }
+
+                val typeLabel = when (netType) {
+                    TelephonyManager.NETWORK_TYPE_NR -> "5G"
+                    TelephonyManager.NETWORK_TYPE_LTE -> "4G"
+                    TelephonyManager.NETWORK_TYPE_HSDPA,
+                    TelephonyManager.NETWORK_TYPE_HSPA,
+                    TelephonyManager.NETWORK_TYPE_HSPAP,
+                    TelephonyManager.NETWORK_TYPE_HSUPA,
+                    TelephonyManager.NETWORK_TYPE_UMTS -> "3G"
+                    TelephonyManager.NETWORK_TYPE_EDGE,
+                    TelephonyManager.NETWORK_TYPE_GPRS,
+                    TelephonyManager.NETWORK_TYPE_CDMA,
+                    TelephonyManager.NETWORK_TYPE_1xRTT -> "2G"
+                    else -> "4G"
+                }
+                netStatusView.text = typeLabel
+                return
+            }
+
+            netStatusView.text = "OK"
+        } catch (_: Exception) {
+            signalIconView?.setImageResource(R.drawable.ic_cellular_signal_white)
+            signalIconView?.visibility = View.VISIBLE
+            netStatusView.text = "4G"
+        }
     }
 
     private fun launchNavigationApp() {
-        val wazePackage = "com.waze"
         val mapsPackage = "com.google.android.apps.maps"
+        val wazePackage = "com.waze"
         val pm = packageManager
 
-        val intent = pm.getLaunchIntentForPackage(wazePackage)
-            ?: pm.getLaunchIntentForPackage(mapsPackage)
+        val intent = pm.getLaunchIntentForPackage(mapsPackage)
+            ?: pm.getLaunchIntentForPackage(wazePackage)
             ?: Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q="))
 
         try {
@@ -2235,18 +2858,12 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        btnToggleStartOnConnect.setOnClickListener {
-            val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
-            val newState = !switchStartOnConnect.isChecked
-            switchStartOnConnect.isChecked = newState
-            prefs.edit().putBoolean("start_on_idrive_connect", newState).apply()
+        btnCarBtSelect.setOnClickListener {
+            showCarBluetoothPicker()
         }
 
-        btnToggleCloseOnDisconnect.setOnClickListener {
-            val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
-            val newState = !switchCloseOnDisconnect.isChecked
-            switchCloseOnDisconnect.isChecked = newState
-            prefs.edit().putBoolean("close_on_idrive_disconnect", newState).apply()
+        btnToggleForceDisplayMode.setOnClickListener {
+            cycleForceDisplayMode()
         }
     }
 
@@ -2262,10 +2879,16 @@ class MainActivity : AppCompatActivity() {
         seekNightBrightness.progress = nightBrightness
         tvNightBrightnessVal.text = "$nightBrightness%"
 
-        val startOnConnect = prefs.getBoolean("start_on_idrive_connect", true)
-        val closeOnDisconnect = prefs.getBoolean("close_on_idrive_disconnect", true)
-        switchStartOnConnect.isChecked = startOnConnect
-        switchCloseOnDisconnect.isChecked = closeOnDisconnect
+        val carBtName = prefs.getString("car_bt_name", null)
+        val carBtAddress = prefs.getString("car_bt_address", null)
+        if (!carBtAddress.isNullOrEmpty()) {
+            tvCarBtStatus.text = if (!carBtName.isNullOrEmpty()) "$carBtName ($carBtAddress)" else carBtAddress
+        } else {
+            tvCarBtStatus.text = "Neselectat (Apasă pentru selectare)"
+        }
+
+        val forceMode = prefs.getString("force_display_mode", "auto") ?: "auto"
+        updateDisplayModeUI(forceMode)
 
         val isNotifGranted = CarNotificationListenerService.isNotificationAccessGranted(this)
         val isStorageGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
@@ -2282,6 +2905,354 @@ class MainActivity : AppCompatActivity() {
         btnCloseSettings.isFocusable = true
         btnCloseSettings.isFocusableInTouchMode = false
         btnCloseSettings.enableInstantClickOnTouch()
+    }
+
+    private fun showCarBluetoothPicker() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                requestBtConnectPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                return
+            }
+        }
+
+        val btManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val btAdapter = btManager?.adapter ?: BluetoothAdapter.getDefaultAdapter()
+        if (btAdapter == null || !btAdapter.isEnabled) {
+            Toast.makeText(this, "Bluetooth este dezactivat!", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val bondedDevices = try {
+            btAdapter.bondedDevices?.toList() ?: emptyList()
+        } catch (_: SecurityException) {
+            Toast.makeText(this, "Lipsă permisiune Bluetooth!", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
+        val currentCarAddress = prefs.getString("car_bt_address", "") ?: ""
+
+        val items = ArrayList<String>()
+        items.add("Niciunul (Dezactivat)")
+        var selectedIndex = 0
+
+        bondedDevices.forEachIndexed { index, device ->
+            val devName = try { device.name } catch (_: SecurityException) { null } ?: "Dispozitiv necunoscut"
+            items.add("$devName (${device.address})")
+            if (device.address.equals(currentCarAddress, ignoreCase = true)) {
+                selectedIndex = index + 1
+            }
+        }
+
+        val builder = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        builder.setTitle("Selectează Bluetooth-ul Mașinii")
+        builder.setSingleChoiceItems(items.toTypedArray(), selectedIndex) { dialog, which ->
+            if (which == 0) {
+                prefs.edit().remove("car_bt_address").remove("car_bt_name").putString("force_display_mode", "auto").apply()
+                lastDisconnectTimestamp = 0L
+                isCarConnectedState = false
+                tvCarBtStatus.text = "Neselectat (Apasă pentru selectare)"
+                Toast.makeText(this, "Bluetooth mașină dezactivat", Toast.LENGTH_SHORT).show()
+            } else {
+                val selectedDevice = bondedDevices[which - 1]
+                val devName = try { selectedDevice.name } catch (_: SecurityException) { null } ?: "Dispozitiv necunoscut"
+                prefs.edit()
+                    .putString("car_bt_address", selectedDevice.address)
+                    .putString("car_bt_name", devName)
+                    .putString("force_display_mode", "auto")
+                    .apply()
+                lastDisconnectTimestamp = 0L
+                isCarConnectedState = false
+                tvCarBtStatus.text = "$devName (${selectedDevice.address})"
+                Toast.makeText(this, "Bluetooth mașină setat: $devName", Toast.LENGTH_SHORT).show()
+            }
+            dialog.dismiss()
+            checkBluetoothConnectionAndUpdateOrientation()
+        }
+        builder.setNegativeButton("Anulează", null)
+        builder.show()
+    }
+
+    private fun cycleForceDisplayMode() {
+        val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
+        val currentMode = prefs.getString("force_display_mode", "auto") ?: "auto"
+        val nextMode = when (currentMode) {
+            "auto" -> "landscape"
+            "landscape" -> "portrait"
+            else -> "auto"
+        }
+        prefs.edit().putString("force_display_mode", nextMode).apply()
+        updateDisplayModeUI(nextMode)
+        val msg = when (nextMode) {
+            "landscape" -> "Mod Forțat: Mașină (Landscape)"
+            "portrait" -> "Mod Forțat: Portret (Telefon)"
+            else -> "Mod: Automat (urmează conexiunea Bluetooth a mașinii)"
+        }
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        checkBluetoothConnectionAndUpdateOrientation()
+    }
+
+    private fun updateDisplayModeUI(mode: String) {
+        tvDisplayModeStatus.text = when (mode) {
+            "landscape" -> "Forțat Mașină (Landscape)"
+            "portrait" -> "Forțat Portret (Telefon)"
+            else -> "Automat (Bluetooth mașină)"
+        }
+        tvDisplayModeBadge.text = when (mode) {
+            "landscape" -> "MAȘINĂ ›"
+            "portrait" -> "PORTRET ›"
+            else -> "AUTO ›"
+        }
+    }
+
+    private fun checkAndRequestBluetoothPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                requestBtConnectPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+            }
+        }
+    }
+
+    private fun initBluetoothProfiles() {
+        val btManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val btAdapter = btManager?.adapter ?: BluetoothAdapter.getDefaultAdapter()
+        if (btAdapter == null || !btAdapter.isEnabled) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            return
+        }
+
+        try {
+            btAdapter.getProfileProxy(this, object : BluetoothProfile.ServiceListener {
+                override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+                    if (profile == BluetoothProfile.A2DP) {
+                        a2dpProxy = proxy as? BluetoothA2dp
+                    } else if (profile == BluetoothProfile.HEADSET) {
+                        headsetProxy = proxy as? BluetoothHeadset
+                    }
+                    checkBluetoothConnectionAndUpdateOrientation()
+                }
+
+                override fun onServiceDisconnected(profile: Int) {
+                    if (profile == BluetoothProfile.A2DP) a2dpProxy = null
+                    if (profile == BluetoothProfile.HEADSET) headsetProxy = null
+                }
+            }, BluetoothProfile.A2DP)
+
+            btAdapter.getProfileProxy(this, object : BluetoothProfile.ServiceListener {
+                override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+                    if (profile == BluetoothProfile.HEADSET) {
+                        headsetProxy = proxy as? BluetoothHeadset
+                    }
+                    checkBluetoothConnectionAndUpdateOrientation()
+                }
+
+                override fun onServiceDisconnected(profile: Int) {
+                    if (profile == BluetoothProfile.HEADSET) headsetProxy = null
+                }
+            }, BluetoothProfile.HEADSET)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Eroare init profile proxies Bluetooth: ${e.message}")
+        }
+    }
+
+    private fun isCarBluetoothConnected(): Boolean {
+        // Dacă s-a deconectat în ultimele 5 secunde, ignoră orice stare reziduală din proxy-uri/reflection
+        if (!isCarConnectedState && android.os.SystemClock.elapsedRealtime() - lastDisconnectTimestamp < 5000L) {
+            return false
+        }
+
+        if (isCarConnectedState) return true
+
+        val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
+        val savedCarAddress = prefs.getString("car_bt_address", null)
+
+        val btManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val btAdapter = btManager?.adapter ?: BluetoothAdapter.getDefaultAdapter()
+        if (btAdapter == null || !btAdapter.isEnabled) return false
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                return false
+            }
+        }
+
+        try {
+            if (!savedCarAddress.isNullOrEmpty()) {
+                val a2dpConn = a2dpProxy?.connectedDevices?.any { it.address.equals(savedCarAddress, ignoreCase = true) } == true
+                val headsetConn = headsetProxy?.connectedDevices?.any { it.address.equals(savedCarAddress, ignoreCase = true) } == true
+                val gattConn = try {
+                    btManager?.getConnectedDevices(BluetoothProfile.GATT)?.any { it.address.equals(savedCarAddress, ignoreCase = true) } == true
+                } catch (_: Exception) { false }
+
+                var devIsConnected = false
+                try {
+                    val remoteDev = btAdapter.getRemoteDevice(savedCarAddress)
+                    val method = remoteDev.javaClass.getMethod("isConnected")
+                    devIsConnected = (method.invoke(remoteDev) as? Boolean) == true
+                } catch (_: Exception) {}
+
+                Log.d("MainActivity", "isCarBluetoothConnected check for $savedCarAddress: a2dp=$a2dpConn, hfp=$headsetConn, gatt=$gattConn, isConnected=$devIsConnected")
+                if (a2dpConn || headsetConn || gattConn || devIsConnected) {
+                    isCarConnectedState = true
+                    return true
+                }
+                return false
+            }
+
+            // Fallback dacă nu este selectat explicit un dispozitiv: detectează BMW / iDrive / ESP32 doar prin profiluri active A2DP/Headset
+            val connectedA2dp = a2dpProxy?.connectedDevices ?: emptyList()
+            val connectedHeadset = headsetProxy?.connectedDevices ?: emptyList()
+            val allConnected = (connectedA2dp + connectedHeadset).distinctBy { it.address }
+            for (dev in allConnected) {
+                val name = try { dev.name } catch (_: Exception) { null } ?: ""
+                if (name.contains("BMW", ignoreCase = true) || name.contains("iDrive", ignoreCase = true) || name.contains("ESP32", ignoreCase = true)) {
+                    isCarConnectedState = true
+                    return true
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Eroare verificare conexiune Bluetooth: ${e.message}")
+        }
+
+        return false
+    }
+
+    private fun determineTargetOrientation(): Int {
+        val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
+        val forceMode = prefs.getString("force_display_mode", "auto") ?: "auto"
+        return when (forceMode) {
+            "landscape" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            "portrait" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            else -> {
+                if (isCarBluetoothConnected()) {
+                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                } else {
+                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                }
+            }
+        }
+    }
+
+    fun stopAllAudioPlayers() {
+        try {
+            sendBroadcast(Intent(RadioService.ACTION_STOP_RADIO).setPackage(packageName))
+        } catch (_: Exception) {}
+        try {
+            controller?.pause()
+            controller?.stop()
+        } catch (_: Exception) {}
+        try {
+            if (isYouTubeWebMode && isYouTubeWebPlaying) {
+                youtubeWebView?.evaluateJavascript("window.__bmwUserPaused = true; var v = document.querySelector('video'); if (v) v.pause();", null)
+                isYouTubeWebPlaying = false
+            }
+        } catch (_: Exception) {}
+        try {
+            ExternalMediaManager.getActiveMusicController(this)?.transportControls?.pause()
+        } catch (_: Exception) {}
+        try {
+            VoiceMessagePlayer.stop()
+        } catch (_: Exception) {}
+        try {
+            textToSpeech?.stop()
+        } catch (_: Exception) {}
+        try {
+            updatePlayPauseIcon(false)
+        } catch (_: Exception) {}
+    }
+
+    fun wakeScreenAndShowOverLockscreen() {
+        try {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } catch (_: Exception) {}
+    }
+
+    fun clearShowWhenLocked() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                setShowWhenLocked(false)
+                setTurnScreenOn(false)
+            } else {
+                @Suppress("DEPRECATION")
+                window.clearFlags(
+                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+                )
+            }
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } catch (e: Exception) {
+            Log.w("MainActivity", "clearShowWhenLocked warning: ${e.message}")
+        }
+    }
+
+    private var lastRadioStartTimestamp = 0L
+
+    fun startRadioPlayback() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastRadioStartTimestamp < 2500L) return
+        lastRadioStartTimestamp = now
+        try {
+            val ctrl = controller
+            if (ctrl != null) {
+                if (!ctrl.isPlaying && currentMode != CenterMode.MEDIA && !ExternalMediaManager.currentData.isPlaying) {
+                    ctrl.play()
+                    Log.i("MainActivity", "Radio intern pornit via controller la conectare la mașină")
+                }
+            } else {
+                val radioIntent = Intent(this, RadioService::class.java).apply {
+                    action = RadioService.ACTION_START_PLAY
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(radioIntent)
+                } else {
+                    startService(radioIntent)
+                }
+                Log.i("MainActivity", "RadioService pornit cu ACTION_START_PLAY la conectare la mașină")
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Eroare la startRadioPlayback: ${e.message}", e)
+        }
+    }
+
+    private fun applyTargetOrientation() {
+        checkBluetoothConnectionAndUpdateOrientation()
+    }
+
+    fun checkBluetoothConnectionAndUpdateOrientation() {
+        val target = determineTargetOrientation()
+        if (target == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
+            clearShowWhenLocked()
+            stopAllAudioPlayers()
+        } else {
+            startRadioPlayback()
+        }
+        if (requestedOrientation != target) {
+            val previousOrientation = requestedOrientation
+            Log.i("MainActivity", "checkBluetoothConnectionAndUpdateOrientation: comutare de la $previousOrientation la $target")
+            requestedOrientation = target
+
+            // Când trece în Mod Portret, blochează ecranul (lock display)
+            if (target == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
+                lockScreenIfPossible()
+            }
+        }
+    }
+
+    fun lockScreenIfPossible() {
+        runOnUiThread {
+            try {
+                val locked = BMWAccessibilityService.lockScreen()
+                if (!locked) {
+                    Log.d("MainActivity", "lockScreen via Accessibility returned false (serviciul nu este activat de utilizator)")
+                } else {
+                    Log.i("MainActivity", "Display locked successfully on transition to Portrait mode")
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Eroare blocare ecran la comutare in portret: ${e.message}")
+            }
+        }
     }
 
     private fun refreshStations() {
@@ -2598,11 +3569,38 @@ class MainActivity : AppCompatActivity() {
         enableImmersiveMode()
         clockHandler.post(clockRunnable)
         startGpsUpdates()
-        centerMapView.onStart()
+        if (!isPortraitOrientation() && mapLibreMap != null) {
+            try { centerMapView.onStart() } catch (_: Exception) {}
+        }
 
         try {
-            registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val batteryStatusIntent = registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            batteryStatusIntent?.let { bIntent ->
+                val level = bIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                val scale = bIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+                val status = bIntent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+                val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+                if (level >= 0 && scale > 0) {
+                    val pct = (level * 100) / scale
+                    val prefix = if (isCharging) "⚡ " else "🔋 "
+                    bottomBatteryIcon.text = "$prefix$pct%"
+                }
+            }
         } catch (_: Exception) {}
+
+        val btFilter = IntentFilter().apply {
+            addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+            addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+            addAction(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED)
+            addAction(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED)
+            addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED)
+            addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
+        }
+        try {
+            registerReceiver(bluetoothReceiver, btFilter)
+        } catch (_: Exception) {}
+        initBluetoothProfiles()
+        checkBluetoothConnectionAndUpdateOrientation()
 
         WazeNotificationService.refresh()
         ExternalMediaManager.syncActiveSessions(this)
@@ -2663,8 +3661,13 @@ class MainActivity : AppCompatActivity() {
         val ctrl = controller ?: return
         updateRadioUI(ctrl)
 
-        if (isFirstRadioConnect) {
-            isFirstRadioConnect = false
+        if (isPortraitOrientation() || determineTargetOrientation() == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
+            try {
+                ctrl.pause()
+                ctrl.stop()
+                sendBroadcast(Intent(RadioService.ACTION_STOP_RADIO).setPackage(packageName))
+            } catch (_: Exception) {}
+        } else {
             if (!ctrl.isPlaying && currentMode != CenterMode.MEDIA && !ExternalMediaManager.currentData.isPlaying) {
                 ctrl.play()
             }
@@ -2678,6 +3681,13 @@ class MainActivity : AppCompatActivity() {
                 updateRadioUI(ctrl)
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying && (isPortraitOrientation() || determineTargetOrientation() == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)) {
+                    try {
+                        ctrl.pause()
+                        ctrl.stop()
+                        sendBroadcast(Intent(RadioService.ACTION_STOP_RADIO).setPackage(packageName))
+                    } catch (_: Exception) {}
+                }
                 updateRadioUI(ctrl)
             }
         })
@@ -2709,9 +3719,14 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
-        centerMapView.onStop()
+        if (!isPortraitOrientation() && mapLibreMap != null) {
+            try { centerMapView.onStop() } catch (_: Exception) {}
+        }
         try {
             unregisterReceiver(batteryReceiver)
+        } catch (_: Exception) {}
+        try {
+            unregisterReceiver(bluetoothReceiver)
         } catch (_: Exception) {}
         WazeNavManager.listener = null
         ExternalMediaManager.listener = null
@@ -2727,6 +3742,13 @@ class MainActivity : AppCompatActivity() {
         if (intent.getBooleanExtra("EXTRA_AUTO_CLOSE", false)) {
             closeLauncher()
             return
+        }
+        if (intent.getBooleanExtra("EXTRA_CAR_BT_CONNECTED", false)) {
+            Log.i("MainActivity", "onNewIntent: EXTRA_CAR_BT_CONNECTED primit, trecere in mod masina si pornire radio")
+            isCarConnectedState = true
+            lastDisconnectTimestamp = 0L
+            checkBluetoothConnectionAndUpdateOrientation()
+            startRadioPlayback()
         }
         if (intent.getBooleanExtra("EXTRA_F12_RETURN", false)) {
             dismissAllOverlays()
@@ -2765,9 +3787,15 @@ class MainActivity : AppCompatActivity() {
         isInForeground = true
         currentTaskId = taskId
         ExternalMediaManager.cancelAutoReturn()
-        ExternalMediaManager.syncActiveSessions(this)
+        if (isPortraitOrientation()) {
+            stopAllAudioPlayers()
+        } else {
+            ExternalMediaManager.syncActiveSessions(this)
+        }
         applyScreenBrightness(isNightMode)
-        centerMapView.onResume()
+        if (!isPortraitOrientation() && mapLibreMap != null) {
+            try { centerMapView.onResume() } catch (_: Exception) {}
+        }
         registerGnssCallback()
         focusPlayPauseButton()
         if (currentMode == CenterMode.ENERGY) {
@@ -2778,11 +3806,39 @@ class MainActivity : AppCompatActivity() {
         // Reconectare / Abonare la notificări
         CarNotificationHub.onNotificationReceived = { notif ->
             displayNotification(notif)
+            if (isPortraitOrientation()) {
+                updateNetworkStatus()
+            }
+        }
+        CarNotificationHub.onUnreadCountChanged = { _ ->
+            if (isPortraitOrientation()) {
+                updateNetworkStatus()
+            }
+        }
+        CarNotificationHub.onNotificationsListChanged = { _ ->
+            checkAndShowPendingNotifications()
         }
 
-        // Asigură că serviciul NotificationListenerService este conectat la sistem
+        // Asigură că serviciul NotificationListenerService este conectat la sistem și sincronizat
         if (CarNotificationListenerService.isNotificationAccessGranted(this)) {
             CarNotificationListenerService.rebindService(this)
+            CarNotificationListenerService.instance?.syncActiveNotificationsCount()
+            checkAndShowPendingNotifications()
+            if (isPortraitOrientation()) {
+                updateNetworkStatus()
+            }
+        }
+    }
+
+    fun openNotificationShade() {
+        try {
+            @Suppress("WrongConstant")
+            val sbservice = getSystemService("statusbar")
+            val statusbarManager = Class.forName("android.app.StatusBarManager")
+            val expands = statusbarManager.getMethod("expandNotificationsPanel")
+            expands.invoke(sbservice)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error expanding notification panel: ${e.message}")
         }
     }
 
@@ -2793,18 +3849,24 @@ class MainActivity : AppCompatActivity() {
         energyHandler.removeCallbacks(energyPollRunnable)
         currentTaskId = taskId
         ExternalMediaManager.onLauncherPaused(this, taskId)
-        centerMapView.onPause()
+        if (!isPortraitOrientation() && mapLibreMap != null) {
+            try { centerMapView.onPause() } catch (_: Exception) {}
+        }
         unregisterGnssCallback()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        centerMapView.onSaveInstanceState(outState)
+        if (!isPortraitOrientation() && mapLibreMap != null) {
+            try { centerMapView.onSaveInstanceState(outState) } catch (_: Exception) {}
+        }
     }
 
     override fun onLowMemory() {
         super.onLowMemory()
-        centerMapView.onLowMemory()
+        if (!isPortraitOrientation() && mapLibreMap != null) {
+            try { centerMapView.onLowMemory() } catch (_: Exception) {}
+        }
     }
 
     override fun onDestroy() {
@@ -2813,13 +3875,22 @@ class MainActivity : AppCompatActivity() {
         VoiceMessagePlayer.stop()
         VoiceMessagePlayer.listener = null
         energyHandler.removeCallbacksAndMessages(null)
-        centerMapView.onDestroy()
+        if (!isPortraitOrientation() && mapLibreMap != null) {
+            try { centerMapView.onDestroy() } catch (_: Exception) {}
+        }
         try {
             textToSpeech?.stop()
             textToSpeech?.shutdown()
         } catch (_: Exception) {}
         CarNotificationHub.onNotificationReceived = null
+        CarNotificationHub.onUnreadCountChanged = null
         notifDismissHandler.removeCallbacksAndMessages(null)
+        try {
+            val btManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            val btAdapter = btManager?.adapter ?: BluetoothAdapter.getDefaultAdapter()
+            a2dpProxy?.let { btAdapter?.closeProfileProxy(BluetoothProfile.A2DP, it) }
+            headsetProxy?.let { btAdapter?.closeProfileProxy(BluetoothProfile.HEADSET, it) }
+        } catch (_: Exception) {}
     }
 
     private fun initTextToSpeech() {
@@ -2882,6 +3953,90 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupNotifGestureDetector() {
+        notifGestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            private val SWIPE_THRESHOLD = 50
+            private val SWIPE_VELOCITY_THRESHOLD = 50
+
+            override fun onDown(e: MotionEvent): Boolean = true
+
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                if (e1 == null) return false
+                val diffX = e2.x - e1.x
+                val diffY = e2.y - e1.y
+                if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > SWIPE_THRESHOLD && Math.abs(velocityX) > SWIPE_VELOCITY_THRESHOLD) {
+                    isNotifSwipeHandled = true
+                    if (diffX < 0) {
+                        onNotificationSwiped(direction = -1)
+                    } else {
+                        onNotificationSwiped(direction = 1)
+                    }
+                    return true
+                }
+                return false
+            }
+        })
+    }
+
+    private fun onNotificationSwiped(direction: Int) {
+        val current = activeNotification ?: return
+        val unreadList = CarNotificationHub.unreadNotifications
+        if (unreadList.isEmpty()) return
+
+        val currentIndex = unreadList.indexOfFirst { it.key == current.key }
+        val slideOutDistance = (viewCenterNotification.width.toFloat().takeIf { it > 0f } ?: 400f) * if (direction < 0) -1f else 1f
+
+        viewCenterNotification.animate()
+            .translationX(slideOutDistance)
+            .alpha(0f)
+            .setDuration(160)
+            .withEndAction {
+                try {
+                    CarNotificationListenerService.instance?.cancelNotification(current.key)
+                } catch (_: Exception) {}
+                CarNotificationHub.removeNotification(current.key)
+
+                val remaining = CarNotificationHub.unreadNotifications
+                if (remaining.isEmpty()) {
+                    viewCenterNotification.translationX = 0f
+                    viewCenterNotification.alpha = 1f
+                    currentMode = if (isPortraitOrientation()) CenterMode.BMW else preNotificationMode
+                    updateCenterModeUI(animateFrom = CenterMode.NOTIFICATION)
+                } else {
+                    val nextNotif = if (currentIndex >= 0 && currentIndex < remaining.size) {
+                        remaining[currentIndex]
+                    } else {
+                        remaining.first()
+                    }
+                    displayNotification(nextNotif)
+                    viewCenterNotification.translationX = -slideOutDistance
+                    viewCenterNotification.alpha = 0f
+                    viewCenterNotification.animate()
+                        .translationX(0f)
+                        .alpha(1f)
+                        .setDuration(180)
+                        .start()
+                }
+            }
+            .start()
+    }
+
+    private fun checkAndShowPendingNotifications() {
+        runOnUiThread {
+            val unread = CarNotificationHub.unreadNotifications
+            if (currentMode == CenterMode.NOTIFICATION) {
+                if (unread.isEmpty()) {
+                    currentMode = if (isPortraitOrientation()) CenterMode.BMW else preNotificationMode
+                    updateCenterModeUI(animateFrom = CenterMode.NOTIFICATION)
+                } else {
+                    val currentKey = activeNotification?.key
+                    val item = unread.firstOrNull { it.key == currentKey } ?: unread.first()
+                    displayNotification(item)
+                }
+            }
+        }
+    }
+
     private fun displayNotification(notif: CarNotification) {
         activeNotification = notif
         VoiceMessagePlayer.stop()
@@ -2892,6 +4047,16 @@ class MainActivity : AppCompatActivity() {
                 updateCenterModeUI(animateFrom = preNotificationMode)
             } else {
                 updateCenterModeUI()
+            }
+
+            val unreadList = CarNotificationHub.unreadNotifications
+            val total = unreadList.size
+            val currentIndex = unreadList.indexOfFirst { it.key == notif.key }
+            if (total > 1 && currentIndex >= 0) {
+                tvNotifCounter?.visibility = View.VISIBLE
+                tvNotifCounter?.text = "${currentIndex + 1} / $total"
+            } else {
+                tvNotifCounter?.visibility = View.GONE
             }
 
             // Pictograma aplicatiei
@@ -2937,7 +4102,7 @@ class MainActivity : AppCompatActivity() {
             // Permite focalizarea copiilor din interiorul cercului central
             centerCircle.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
 
-            // Auto-dismiss dupa 20 secunde de inactivitate
+            // In modul masina -> auto-dismiss dupa 20s; in modul portret -> persistent cat timp sunt notificari in bara
             resetNotifDismissTimer()
 
             // Focalizare automata pe butonul de actiune principala
@@ -2950,10 +4115,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun resetNotifDismissTimer() {
-        if (currentMode == CenterMode.NOTIFICATION) {
-            notifDismissHandler.removeCallbacks(notifDismissRunnable)
-            if (!VoiceMessagePlayer.isPlaying() && textToSpeech?.isSpeaking != true) {
-                notifDismissHandler.postDelayed(notifDismissRunnable, 20000L)
+        notifDismissHandler.removeCallbacks(notifDismissRunnable)
+        if (!isPortraitOrientation()) {
+            if (currentMode == CenterMode.NOTIFICATION) {
+                if (!VoiceMessagePlayer.isPlaying() && textToSpeech?.isSpeaking != true) {
+                    notifDismissHandler.postDelayed(notifDismissRunnable, 20000L)
+                }
             }
         }
     }
@@ -2965,9 +4132,29 @@ class MainActivity : AppCompatActivity() {
             resumeOtherPlayersAfterVoiceMessage()
         }
         centerCircle.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-        if (currentMode == CenterMode.NOTIFICATION) {
-            currentMode = preNotificationMode
-            updateCenterModeUI(animateFrom = CenterMode.NOTIFICATION)
+
+        if (!isPortraitOrientation()) {
+            if (currentMode == CenterMode.NOTIFICATION) {
+                currentMode = preNotificationMode
+                updateCenterModeUI(animateFrom = CenterMode.NOTIFICATION)
+            }
+            return
+        }
+
+        activeNotification?.let { notif ->
+            try {
+                CarNotificationListenerService.instance?.cancelNotification(notif.key)
+            } catch (_: Exception) {}
+            CarNotificationHub.removeNotification(notif.key)
+        }
+        val remaining = CarNotificationHub.unreadNotifications
+        if (remaining.isNotEmpty()) {
+            displayNotification(remaining.first())
+        } else {
+            if (currentMode == CenterMode.NOTIFICATION) {
+                currentMode = CenterMode.BMW
+                updateCenterModeUI(animateFrom = CenterMode.NOTIFICATION)
+            }
         }
     }
 
@@ -3005,6 +4192,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun resumeOtherPlayersAfterVoiceMessage() {
+        if (isPortraitOrientation() || determineTargetOrientation() == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
+            wasRadioPlayingBeforeVoice = false
+            wasYouTubePlayingBeforeVoice = false
+            wasExternalMediaPlayingBeforeVoice = false
+            stopAllAudioPlayers()
+            return
+        }
         if (wasRadioPlayingBeforeVoice) {
             wasRadioPlayingBeforeVoice = false
             controller?.play()
@@ -3351,8 +4545,8 @@ class MainActivity : AppCompatActivity() {
                 if (::seekDayBrightness.isInitialized && seekDayBrightness.visibility == View.VISIBLE) views.add(seekDayBrightness)
                 if (::seekNightBrightness.isInitialized && seekNightBrightness.visibility == View.VISIBLE) views.add(seekNightBrightness)
                 if (::btnOpenNotifSettings.isInitialized && btnOpenNotifSettings.visibility == View.VISIBLE) views.add(btnOpenNotifSettings)
-                if (::btnToggleStartOnConnect.isInitialized && btnToggleStartOnConnect.visibility == View.VISIBLE) views.add(btnToggleStartOnConnect)
-                if (::btnToggleCloseOnDisconnect.isInitialized && btnToggleCloseOnDisconnect.visibility == View.VISIBLE) views.add(btnToggleCloseOnDisconnect)
+                if (::btnCarBtSelect.isInitialized && btnCarBtSelect.visibility == View.VISIBLE) views.add(btnCarBtSelect)
+                if (::btnToggleForceDisplayMode.isInitialized && btnToggleForceDisplayMode.visibility == View.VISIBLE) views.add(btnToggleForceDisplayMode)
             }
             callOverlayContainer -> {
                 val ringing = findViewById<View>(R.id.call_ringing_actions)
@@ -3448,10 +4642,45 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
-        if (ev?.action == MotionEvent.ACTION_DOWN) {
-            resetNotifDismissTimer()
+        if (ev != null) {
+            if (ev.action == MotionEvent.ACTION_DOWN) {
+                resetNotifDismissTimer()
+                isNotifSwipeHandled = false
+            }
+            if (currentMode == CenterMode.NOTIFICATION && ::centerCircle.isInitialized) {
+                val location = IntArray(2)
+                centerCircle.getLocationOnScreen(location)
+                val x = ev.rawX
+                val y = ev.rawY
+                if (x >= location[0] && x <= location[0] + centerCircle.width &&
+                    y >= location[1] && y <= location[1] + centerCircle.height) {
+                    notifGestureDetector?.onTouchEvent(ev)
+                    if (isNotifSwipeHandled) {
+                        val cancelEvent = MotionEvent.obtain(ev)
+                        cancelEvent.action = MotionEvent.ACTION_CANCEL
+                        super.dispatchTouchEvent(cancelEvent)
+                        cancelEvent.recycle()
+                        return true
+                    }
+                }
+            }
+            if (isPortraitOrientation()) {
+                portraitGestureDetector?.onTouchEvent(ev)
+            }
         }
         return super.dispatchTouchEvent(ev)
+    }
+
+    override fun onBackPressed() {
+        if (getActiveSecondaryOverlay() != null) {
+            dismissAllOverlays()
+            return
+        }
+        if (currentMode == CenterMode.NOTIFICATION) {
+            currentMode = if (isPortraitOrientation()) CenterMode.BMW else preNotificationMode
+            updateCenterModeUI(animateFrom = CenterMode.NOTIFICATION)
+            return
+        }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

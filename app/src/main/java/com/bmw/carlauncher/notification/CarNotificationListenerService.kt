@@ -14,6 +14,8 @@ class CarNotificationListenerService : NotificationListenerService() {
         private const val TAG = "CarNotifService"
         var isConnected: Boolean = false
             private set
+        var instance: CarNotificationListenerService? = null
+            private set
 
         fun isNotificationAccessGranted(context: Context): Boolean {
             val enabledListeners = Settings.Secure.getString(
@@ -51,14 +53,85 @@ class CarNotificationListenerService : NotificationListenerService() {
         }
     }
 
+    fun getActiveStatusBarNotificationCount(): Int {
+        val active = try {
+            activeNotifications ?: return 0
+        } catch (e: Exception) {
+            Log.w(TAG, "Eroare getActiveNotifications: ${e.message}")
+            return 0
+        }
+
+        val dismissible = active.filter { sbn ->
+            if (sbn == null) return@filter false
+            if (sbn.packageName == packageName) return@filter false
+            if (sbn.isOngoing) return@filter false
+            val n = sbn.notification ?: return@filter false
+            if ((n.flags and Notification.FLAG_ONGOING_EVENT) != 0) return@filter false
+            if ((n.flags and Notification.FLAG_NO_CLEAR) != 0) return@filter false
+            if (sbn.packageName == "android" && (sbn.tag?.contains("Aggregate") == true)) return@filter false
+            if (sbn.packageName.contains("mi_connect") && (sbn.tag?.contains("Aggregate") == true)) return@filter false
+            true
+        }
+
+        val groupKeysWithChildren = dismissible
+            .filter { (it.notification.flags and Notification.FLAG_GROUP_SUMMARY) == 0 && !it.groupKey.isNullOrEmpty() }
+            .map { "${it.packageName}:${it.groupKey}" }
+            .toSet()
+
+        val effectiveNotifications = dismissible.filter { sbn ->
+            val isSummary = (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0
+            val key = "${sbn.packageName}:${sbn.groupKey}"
+            !(isSummary && groupKeysWithChildren.contains(key))
+        }
+
+        return effectiveNotifications.size
+    }
+
+    fun syncActiveNotificationsCount() {
+        try {
+            val active = activeNotifications ?: emptyArray()
+            val dismissible = active.filter { sbn ->
+                if (sbn == null) return@filter false
+                if (sbn.packageName == packageName) return@filter false
+                if (sbn.isOngoing) return@filter false
+                val n = sbn.notification ?: return@filter false
+                if ((n.flags and Notification.FLAG_ONGOING_EVENT) != 0) return@filter false
+                if ((n.flags and Notification.FLAG_NO_CLEAR) != 0) return@filter false
+                if (sbn.packageName == "android" && (sbn.tag?.contains("Aggregate") == true)) return@filter false
+                if (sbn.packageName.contains("mi_connect") && (sbn.tag?.contains("Aggregate") == true)) return@filter false
+                true
+            }
+
+            val groupKeysWithChildren = dismissible
+                .filter { (it.notification.flags and Notification.FLAG_GROUP_SUMMARY) == 0 && !it.groupKey.isNullOrEmpty() }
+                .map { "${it.packageName}:${it.groupKey}" }
+                .toSet()
+
+            val effectiveNotifications = dismissible.filter { sbn ->
+                val isSummary = (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0
+                val key = "${sbn.packageName}:${sbn.groupKey}"
+                !(isSummary && groupKeysWithChildren.contains(key))
+            }
+
+            val currentParsedList = effectiveNotifications.mapNotNull { parseCarNotification(it) }
+            CarNotificationHub.syncNotifications(currentParsedList)
+            Log.d(TAG, "syncActiveNotificationsCount: parsed=${currentParsedList.size}")
+        } catch (e: Exception) {
+            Log.w(TAG, "Eroare syncActiveNotificationsCount: ${e.message}")
+        }
+    }
+
     override fun onListenerConnected() {
         super.onListenerConnected()
+        instance = this
         isConnected = true
         Log.i(TAG, ">>> CarNotificationListenerService CONECTAT la sistem! <<<")
+        syncActiveNotificationsCount()
     }
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
+        if (instance == this) instance = null
         isConnected = false
         Log.w(TAG, ">>> CarNotificationListenerService DECONECTAT! Se incearca reconectarea... <<<")
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
@@ -70,26 +143,38 @@ class CarNotificationListenerService : NotificationListenerService() {
         }
     }
 
+    override fun onDestroy() {
+        if (instance == this) instance = null
+        super.onDestroy()
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         super.onNotificationPosted(sbn)
         if (sbn == null) return
 
-        val pkg = sbn.packageName ?: return
+        syncActiveNotificationsCount()
 
-        // Nu afișăm propriile notificări sau notificările permanente/ongoing
-        if (pkg == packageName) return
-        if (sbn.isOngoing) return
-
+        val parsed = parseCarNotification(sbn) ?: return
         val n = sbn.notification ?: return
+        val isMessagingApp = isMessageSource(sbn.packageName, n)
+        if (isMessagingApp) {
+            Log.i(TAG, "Notificare mesaje/voce receptionata: App=${parsed.appName}, De la=${parsed.sender}")
+            CarNotificationHub.postNotification(parsed)
+        }
+    }
 
-        // Verificăm dacă este o aplicație de comunicare / mesaje
-        val isMessagingApp = isMessageSource(pkg, n)
-        Log.d(TAG, "onNotificationPosted: pkg=$pkg, isMessagingApp=$isMessagingApp, category=${n.category}")
-        if (!isMessagingApp) return
+    fun parseCarNotification(sbn: StatusBarNotification): CarNotification? {
+        val pkg = sbn.packageName ?: return null
+        if (pkg == packageName) return null
+        if (sbn.isOngoing) return null
 
-        val extras = n.extras ?: return
+        val n = sbn.notification ?: return null
+        if ((n.flags and Notification.FLAG_ONGOING_EVENT) != 0) return null
+        if ((n.flags and Notification.FLAG_NO_CLEAR) != 0) return null
 
-        // 1. Extragere text și expeditor de bază
+        val extras = n.extras ?: return null
+
+        // 1. Extragere text și expeditor
         val rawTitle = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim() ?: ""
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim() ?: ""
         val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.trim() ?: ""
@@ -140,17 +225,14 @@ class CarNotificationListenerService : NotificationListenerService() {
         }
 
         if (sender.isEmpty() && message.isEmpty()) {
-            Log.d(TAG, "Ignorare notificare cu sender si message goale: $pkg")
-            return
+            return null
         }
 
-        // Ignorăm texte de rezumat generic (ex: "2 new messages", "3 mesaje noi", "2 unread emails")
+        // Ignorăm texte de rezumat generic dacă există mesaje individuale
         if (message.matches(Regex("^\\d+\\s+(new messages|mesaje noi|conversations|conversații|unread messages|unread emails|e-mailuri noi|mesaje necitite).*", RegexOption.IGNORE_CASE))) {
-            Log.d(TAG, "Ignorare text rezumat generic: $message")
-            return
+            return null
         }
 
-        // Dacă notificarea este marcată ca Group Summary, verificăm dacă este doar un container fără mesaj concret
         if ((n.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
             val isCountOnly = message.contains("messages", ignoreCase = true) ||
                     message.contains("mesaje", ignoreCase = true) ||
@@ -158,8 +240,7 @@ class CarNotificationListenerService : NotificationListenerService() {
             val hasDirectMessage = extras.containsKey(Notification.EXTRA_MESSAGES) ||
                     extras.containsKey("android.messagingStyleUser")
             if (isCountOnly && !hasDirectMessage) {
-                Log.d(TAG, "Ignorare group summary generic: $message pentru $pkg")
-                return
+                return null
             }
         }
 
@@ -167,11 +248,12 @@ class CarNotificationListenerService : NotificationListenerService() {
         val appName = try {
             val appInfo = pm.getApplicationInfo(pkg, 0)
             pm.getApplicationLabel(appInfo).toString()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             when {
+                pkg.contains("facebook", ignoreCase = true) -> "Facebook"
+                pkg.contains("whatsapp", ignoreCase = true) -> "WhatsApp"
                 pkg.contains("gmail", ignoreCase = true) || pkg == "com.google.android.gm" -> "Gmail"
                 pkg.contains("homeassistant", ignoreCase = true) -> "Home Assistant"
-                pkg.contains("whatsapp", ignoreCase = true) -> "WhatsApp"
                 else -> "Notificare"
             }
         }
@@ -183,16 +265,14 @@ class CarNotificationListenerService : NotificationListenerService() {
             sender = appName
         }
 
-        // 2. Detectare Mesaj Vocal (WhatsApp sau alte aplicații de chat)
         val isVoice = hasAudioMime || isVoiceMessage(message, n)
 
         val appIcon = try {
             pm.getApplicationIcon(pkg)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
 
-        // 3. Extragere actiune de redare directa (daca aplicatia a expus un Notification.Action)
         var playAction: android.app.PendingIntent? = null
         val actions = n.actions
         if (actions != null) {
@@ -208,7 +288,7 @@ class CarNotificationListenerService : NotificationListenerService() {
             }
         }
 
-        val carNotif = CarNotification(
+        return CarNotification(
             key = sbn.key,
             packageName = pkg,
             appName = appName,
@@ -220,13 +300,14 @@ class CarNotificationListenerService : NotificationListenerService() {
             playActionIntent = playAction,
             appIcon = appIcon
         )
-
-        Log.i(TAG, "Notificare receptionata cu succes: App=$appName, De la=$sender, Voice=$isVoice, Msg=$message")
-        CarNotificationHub.postNotification(carNotif)
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
         super.onNotificationRemoved(sbn)
+        if (sbn != null) {
+            CarNotificationHub.removeNotification(sbn.key)
+        }
+        syncActiveNotificationsCount()
     }
 
     private fun isMessageSource(pkg: String, n: Notification): Boolean {

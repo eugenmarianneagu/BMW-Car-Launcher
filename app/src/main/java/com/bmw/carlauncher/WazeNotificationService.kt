@@ -33,15 +33,19 @@ data class WazeNavData(
     val distance: String,
     val road: String,
     val eta: String,
-    val isNavigating: Boolean = true
+    val isNavigating: Boolean = true,
+    val iconBitmap: Bitmap? = null,
+    val sourceApp: String = "GOOGLE MAPS"
 )
 
 object WazeNavManager {
     var currentData: WazeNavData = WazeNavData(
         distance = "-- m",
-        road = "Porniti o ruta in Waze",
-        eta = "Asteptare indicatii...",
-        isNavigating = false
+        road = "Porniți o rută în Google Maps",
+        eta = "Așteptare indicații...",
+        isNavigating = false,
+        iconBitmap = null,
+        sourceApp = "GOOGLE MAPS"
     )
 
     var listener: ((WazeNavData) -> Unit)? = null
@@ -553,8 +557,8 @@ class WazeNotificationService : NotificationListenerService() {
         if (sbn == null) return
         val pkg = sbn.packageName ?: return
 
-        // 1. Asculta notificarile Waze (sau Google Maps ca fallback)
-        if (pkg == "com.waze" || pkg == "com.google.android.apps.maps") {
+        // 1. Asculta notificarile Google Maps si Waze
+        if (pkg == "com.google.android.apps.maps" || pkg == "com.waze") {
             val notification = sbn.notification ?: return
             val extras = notification.extras ?: return
 
@@ -562,12 +566,38 @@ class WazeNotificationService : NotificationListenerService() {
             val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim() ?: ""
             val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.trim() ?: ""
 
+            var navIconBitmap: Bitmap? = null
+            try {
+                @Suppress("DEPRECATION")
+                val iconObj = extras.getParcelable<android.os.Parcelable>(Notification.EXTRA_LARGE_ICON)
+                if (iconObj is Bitmap) {
+                    navIconBitmap = iconObj
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && iconObj is Icon) {
+                    val drawable = iconObj.loadDrawable(this)
+                    if (drawable != null) {
+                        val bmp = Bitmap.createBitmap(
+                            drawable.intrinsicWidth.coerceAtLeast(64),
+                            drawable.intrinsicHeight.coerceAtLeast(64),
+                            Bitmap.Config.ARGB_8888
+                        )
+                        val c = android.graphics.Canvas(bmp)
+                        drawable.setBounds(0, 0, c.width, c.height)
+                        drawable.draw(c)
+                        navIconBitmap = bmp
+                    }
+                }
+            } catch (_: Exception) {}
+
+            val sourceName = if (pkg == "com.waze") "WAZE" else "GOOGLE MAPS"
+
             if (title.isNotEmpty() || text.isNotEmpty()) {
                 val navData = WazeNavData(
-                    distance = if (title.isNotEmpty()) title else "Inainte",
+                    distance = if (title.isNotEmpty()) title else "Înainte",
                     road = if (text.isNotEmpty()) text else "Traseu activ",
-                    eta = if (subText.isNotEmpty()) subText else "Navigare activa",
-                    isNavigating = true
+                    eta = if (subText.isNotEmpty()) subText else "Navigare activă",
+                    isNavigating = true,
+                    iconBitmap = navIconBitmap,
+                    sourceApp = sourceName
                 )
                 WazeNavManager.update(navData)
             }
@@ -714,12 +744,14 @@ class WazeNotificationService : NotificationListenerService() {
         if (sbn == null) return
         val pkg = sbn.packageName ?: return
 
-        if (pkg == "com.waze" || pkg == "com.google.android.apps.maps") {
+        if (pkg == "com.google.android.apps.maps" || pkg == "com.waze") {
             val navData = WazeNavData(
                 distance = "--",
-                road = "Navigatie oprita",
-                eta = "Porniti Waze pentru directii",
-                isNavigating = false
+                road = "Navigație oprită",
+                eta = "Porniți Google Maps pentru indicații",
+                isNavigating = false,
+                iconBitmap = null,
+                sourceApp = "GOOGLE MAPS"
             )
             WazeNavManager.update(navData)
         }
