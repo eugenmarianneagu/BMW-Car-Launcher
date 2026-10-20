@@ -11,6 +11,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.Drawable
 import android.graphics.PixelFormat
 import android.graphics.drawable.Icon
 import android.media.MediaMetadata
@@ -35,7 +37,8 @@ data class WazeNavData(
     val eta: String,
     val isNavigating: Boolean = true,
     val iconBitmap: Bitmap? = null,
-    val sourceApp: String = "GOOGLE MAPS"
+    val sourceApp: String = "GOOGLE MAPS",
+    val directionSymbol: String? = null
 )
 
 object WazeNavManager {
@@ -45,7 +48,8 @@ object WazeNavManager {
         eta = "Așteptare indicații...",
         isNavigating = false,
         iconBitmap = null,
-        sourceApp = "GOOGLE MAPS"
+        sourceApp = "GOOGLE MAPS",
+        directionSymbol = "↑"
     )
 
     var listener: ((WazeNavData) -> Unit)? = null
@@ -429,6 +433,12 @@ object ExternalMediaManager {
         currentData = data
         checkAutoReturn(data.packageName, data.title, data.mediaController?.playbackState?.state, data.isPlaying)
         listener?.invoke(data)
+        try {
+            val ctx = appContext ?: WazeNotificationService.instance
+            if (ctx != null) {
+                BmwCenterWidgetProvider.updateAllWidgets(ctx)
+            }
+        } catch (_: Exception) {}
     }
 
     private fun isKnownMediaPackage(pkg: String): Boolean {
@@ -553,42 +563,158 @@ class WazeNotificationService : NotificationListenerService() {
         if (instance == this) instance = null
     }
 
+    private fun determineDirectionSymbol(textToAnalyze: String): String? {
+        val t = textToAnalyze.lowercase(Locale.getDefault())
+        return when {
+            // Intoarcere (U-turn)
+            t.contains("u-turn") || t.contains("intoarcere") || t.contains("întoarcere") ||
+            t.contains("intoarceti") || t.contains("întoarceți") -> "⤺"
+
+            // Sens giratoriu
+            t.contains("giratoriu") || t.contains("roundabout") -> "⟳"
+
+            // Viraj strans
+            t.contains("strans la stanga") || t.contains("strâns la stânga") || t.contains("sharp left") -> "⮢"
+            t.contains("strans la dreapta") || t.contains("strâns la dreapta") || t.contains("sharp right") -> "⮣"
+
+            // Usor / Pastrati banda / Rampa / Iesire
+            t.contains("usor la stanga") || t.contains("ușor la stânga") || t.contains("usor stanga") || t.contains("ușor stânga") ||
+            t.contains("pastrati stanga") || t.contains("păstrați stânga") || t.contains("tineti stanga") || t.contains("țineți stânga") ||
+            t.contains("banda din stanga") || t.contains("banda din stânga") || t.contains("rampa din stanga") || t.contains("rampa din stânga") ||
+            t.contains("slight left") || t.contains("keep left") || t.contains("bear left") -> "↖"
+
+            t.contains("usor la dreapta") || t.contains("ușor la dreapta") || t.contains("usor dreapta") || t.contains("ușor dreapta") ||
+            t.contains("pastrati dreapta") || t.contains("păstrați dreapta") || t.contains("tineti dreapta") || t.contains("țineți dreapta") ||
+            t.contains("banda din dreapta") || t.contains("rampa din dreapta") || t.contains("iesiti") || t.contains("ieșiți") ||
+            t.contains("iesirea") || t.contains("ieșirea") || t.contains("slight right") || t.contains("keep right") || t.contains("bear right") || t.contains("exit") -> "↗"
+
+            // Viraj standard stanga / dreapta
+            t.contains("stanga") || t.contains("stânga") || t.contains("left") -> "↰"
+            t.contains("dreapta") || t.contains("right") -> "↱"
+
+            // Inainte / Continuati
+            t.contains("inainte") || t.contains("înainte") || t.contains("continuati") || t.contains("continuați") ||
+            t.contains("mergeti") || t.contains("mergeți") || t.contains("urmati") || t.contains("urmați") ||
+            t.contains("straight") || t.contains("continue") || t.contains("head") -> "↑"
+
+            // Destinatie
+            t.contains("ati ajuns") || t.contains("ați ajuns") || t.contains("ati sosit") || t.contains("ați sosit") ||
+            t.contains("destinatie") || t.contains("destinație") || t.contains("arrived") || t.contains("destination") -> "🏁"
+
+            else -> null
+        }
+    }
+
+    private fun extractNavIconBitmap(notification: Notification, extras: android.os.Bundle): Bitmap? {
+        val mapsContext = try {
+            createPackageContext("com.google.android.apps.maps", Context.CONTEXT_IGNORE_SECURITY)
+        } catch (_: Exception) {
+            this
+        }
+
+        // 1. notification.largeIcon (Bitmap) & notification.getLargeIcon() (Icon)
+        @Suppress("DEPRECATION")
+        val largeBmp = notification.largeIcon
+        if (largeBmp != null) {
+            return largeBmp
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val largeIcon = notification.getLargeIcon()
+            if (largeIcon != null) {
+                val bmp = renderIconToBitmap(mapsContext, largeIcon)
+                if (bmp != null) return bmp
+            }
+        }
+
+        // 2. extras EXTRA_LARGE_ICON
+        try {
+            val iconObj = extras.get(Notification.EXTRA_LARGE_ICON)
+            if (iconObj is Bitmap) return iconObj
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && iconObj is Icon) {
+                val bmp = renderIconToBitmap(mapsContext, iconObj)
+                if (bmp != null) return bmp
+            }
+        } catch (_: Exception) {}
+
+        // 3. notification.smallIcon (in Google Maps, smallIcon contine sageata manevrei curente)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val smallIcon = notification.smallIcon
+            if (smallIcon != null) {
+                val bmp = renderIconToBitmap(mapsContext, smallIcon)
+                if (bmp != null) return bmp
+            }
+        }
+
+        // 4. extras EXTRA_SMALL_ICON
+        try {
+            val iconObj = extras.get("android.smallIcon") ?: extras.get(Notification.EXTRA_SMALL_ICON)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && iconObj is Icon) {
+                val bmp = renderIconToBitmap(mapsContext, iconObj)
+                if (bmp != null) return bmp
+            }
+        } catch (_: Exception) {}
+
+        // 5. extras EXTRA_PICTURE
+        try {
+            val pic = extras.get(Notification.EXTRA_PICTURE)
+            if (pic is Bitmap) return pic
+        } catch (_: Exception) {}
+
+        // 6. Resursa directa notification.icon din mapsContext
+        @Suppress("DEPRECATION")
+        val iconRes = notification.icon
+        if (iconRes != 0) {
+            try {
+                val d = androidx.core.content.ContextCompat.getDrawable(mapsContext, iconRes)
+                if (d != null) {
+                    return drawableToBitmap(d)
+                }
+            } catch (_: Exception) {}
+        }
+
+        return null
+    }
+
+    private fun renderIconToBitmap(mapsContext: Context, icon: Icon): Bitmap? {
+        return try {
+            val drawable = icon.loadDrawable(mapsContext) ?: icon.loadDrawable(this) ?: return null
+            drawableToBitmap(drawable)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun drawableToBitmap(drawable: Drawable): Bitmap {
+        val size = 96
+        val w = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else size
+        val h = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else size
+        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        return bitmap
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         if (sbn == null) return
         val pkg = sbn.packageName ?: return
 
-        // 1. Asculta notificarile Google Maps si Waze
-        if (pkg == "com.google.android.apps.maps" || pkg == "com.waze") {
+        // 1. Asculta notificarile Google Maps
+        if (pkg == "com.google.android.apps.maps") {
             val notification = sbn.notification ?: return
             val extras = notification.extras ?: return
 
             val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim() ?: ""
             val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim() ?: ""
             val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.trim() ?: ""
+            val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.trim() ?: ""
+            val ticker = notification.tickerText?.toString()?.trim() ?: ""
 
-            var navIconBitmap: Bitmap? = null
-            try {
-                @Suppress("DEPRECATION")
-                val iconObj = extras.getParcelable<android.os.Parcelable>(Notification.EXTRA_LARGE_ICON)
-                if (iconObj is Bitmap) {
-                    navIconBitmap = iconObj
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && iconObj is Icon) {
-                    val drawable = iconObj.loadDrawable(this)
-                    if (drawable != null) {
-                        val bmp = Bitmap.createBitmap(
-                            drawable.intrinsicWidth.coerceAtLeast(64),
-                            drawable.intrinsicHeight.coerceAtLeast(64),
-                            Bitmap.Config.ARGB_8888
-                        )
-                        val c = android.graphics.Canvas(bmp)
-                        drawable.setBounds(0, 0, c.width, c.height)
-                        drawable.draw(c)
-                        navIconBitmap = bmp
-                    }
-                }
-            } catch (_: Exception) {}
+            val combinedText = "$title $text $subText $bigText $ticker"
+            val directionSymbol = determineDirectionSymbol(combinedText) ?: "↑"
+            val navIconBitmap = extractNavIconBitmap(notification, extras)
 
-            val sourceName = if (pkg == "com.waze") "WAZE" else "GOOGLE MAPS"
+            val sourceName = "GOOGLE MAPS"
 
             if (title.isNotEmpty() || text.isNotEmpty()) {
                 val navData = WazeNavData(
@@ -597,7 +723,8 @@ class WazeNotificationService : NotificationListenerService() {
                     eta = if (subText.isNotEmpty()) subText else "Navigare activă",
                     isNavigating = true,
                     iconBitmap = navIconBitmap,
-                    sourceApp = sourceName
+                    sourceApp = sourceName,
+                    directionSymbol = directionSymbol
                 )
                 WazeNavManager.update(navData)
             }
@@ -744,14 +871,15 @@ class WazeNotificationService : NotificationListenerService() {
         if (sbn == null) return
         val pkg = sbn.packageName ?: return
 
-        if (pkg == "com.google.android.apps.maps" || pkg == "com.waze") {
+        if (pkg == "com.google.android.apps.maps") {
             val navData = WazeNavData(
                 distance = "--",
                 road = "Navigație oprită",
                 eta = "Porniți Google Maps pentru indicații",
                 isNavigating = false,
                 iconBitmap = null,
-                sourceApp = "GOOGLE MAPS"
+                sourceApp = "GOOGLE MAPS",
+                directionSymbol = "↑"
             )
             WazeNavManager.update(navData)
         }

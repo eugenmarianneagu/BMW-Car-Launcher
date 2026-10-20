@@ -56,6 +56,8 @@ class RadioService : MediaSessionService() {
     private val stopRadioReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ACTION_STOP_RADIO) {
+                isRadioPlaying = false
+                BmwCenterWidgetProvider.updateAllWidgets(context ?: this@RadioService)
                 if (::player.isInitialized) {
                     player.playWhenReady = false
                     player.pause()
@@ -72,6 +74,11 @@ class RadioService : MediaSessionService() {
         const val ACTION_RESTART_STANDBY = "com.bmw.carlauncher.RESTART_STANDBY"
         private const val BG_CHANNEL_ID = "bmw_radio_bg_channel"
         private const val BG_NOTIF_ID = 2002
+        var isRadioPlaying: Boolean = false
+        var currentStationName: String = ""
+        var currentTrackTitle: String = ""
+        var currentTrackArtist: String = ""
+        var currentStationBitmap: Bitmap? = null
 
         fun scheduleRestart(context: Context) {
             try {
@@ -119,22 +126,24 @@ class RadioService : MediaSessionService() {
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
-        val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
-        val forceMode = prefs.getString("force_display_mode", "auto") ?: "auto"
         val isCarConnected = MainActivity.isCarConnectedState
-        val isPortrait = !isCarConnected && ((forceMode == "portrait") ||
-                (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT && forceMode != "landscape"))
-
-        // Porneste automat redarea doar in mod Landscape / Masina, NICIODATA in mod Portret
-        loadPlaylist(autoPlay = !isPortrait)
+        loadPlaylist(autoPlay = isCarConnected)
 
         player.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                isRadioPlaying = isPlaying
+                BmwCenterWidgetProvider.updateAllWidgets(this@RadioService)
+            }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 val index = player.currentMediaItemIndex
                 if (index in stations.indices) {
+                    currentStationName = stations[index].name
+                    currentTrackArtist = stations[index].name
+                    currentTrackTitle = stations[index].genre
                     StationManager.saveLastIndex(this@RadioService, index)
                     fetchOrGenerateLogo(index, stations[index])
                 }
+                BmwCenterWidgetProvider.updateAllWidgets(this@RadioService)
             }
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
@@ -199,48 +208,48 @@ class RadioService : MediaSessionService() {
             .setCallback(callback)
             .build()
 
-        try {
-            startService(Intent(this, RadioService::class.java))
-        } catch (_: Exception) {
-        }
+
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         ensureForegroundStandby()
 
-        val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
-        val forceMode = prefs.getString("force_display_mode", "auto") ?: "auto"
-        val isCarConnected = MainActivity.isCarConnectedState
-        val isPortraitMode = !isCarConnected && ((forceMode == "portrait") ||
-                (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT && forceMode != "landscape"))
-
         if (intent?.action == ACTION_START_PLAY) {
+            val lastIndex = StationManager.getLastIndex(this)
             if (player.mediaItemCount == 0) {
                 loadPlaylist(autoPlay = true)
             } else {
+                if (lastIndex in 0 until player.mediaItemCount && player.currentMediaItemIndex != lastIndex) {
+                    player.seekTo(lastIndex, C.TIME_UNSET)
+                }
+                player.playWhenReady = true
+                player.prepare()
+                player.play()
+            }
+        } else if (intent?.action == ACTION_STOP_RADIO) {
+            player.playWhenReady = false
+            if (player.isPlaying) {
+                player.pause()
+            }
+        } else if (intent?.action == ACTION_RESTART_STANDBY) {
+            player.playWhenReady = false
+            if (player.playbackState == Player.STATE_IDLE) {
+                player.prepare()
+            }
+        } else {
+            val isCarConnected = MainActivity.isCarConnectedState
+            if (isCarConnected) {
                 player.playWhenReady = true
                 if (player.playbackState == Player.STATE_IDLE) {
                     player.prepare()
                 }
                 player.play()
+            } else {
+                if (player.playbackState == Player.STATE_IDLE) {
+                    player.prepare()
+                }
             }
-        } else if (intent?.action == ACTION_RESTART_STANDBY || isPortraitMode) {
-            player.playWhenReady = false
-            if (player.playbackState == Player.STATE_IDLE) {
-                player.prepare()
-            }
-            if (isPortraitMode && player.isPlaying) {
-                player.pause()
-                player.stop()
-            }
-        } else {
-            // BOOT_COMPLETED sau pornire initiala in fundal
-            player.playWhenReady = true
-            if (player.playbackState == Player.STATE_IDLE) {
-                player.prepare()
-            }
-            player.play()
         }
         return START_STICKY
     }
@@ -296,6 +305,10 @@ class RadioService : MediaSessionService() {
             displayArtist = station.name
             displayTitle = rawTitle
         }
+
+        currentTrackTitle = displayTitle
+        currentTrackArtist = displayArtist
+        BmwCenterWidgetProvider.updateAllWidgets(this@RadioService)
 
         val currentItem = player.getMediaItemAt(index)
         val updatedMeta = currentItem.mediaMetadata.buildUpon()
@@ -368,6 +381,8 @@ class RadioService : MediaSessionService() {
                     bmp.compress(Bitmap.CompressFormat.PNG, 90, stream)
                     val bytes = stream.toByteArray()
                     artworkCache[index] = bytes
+                    currentStationBitmap = bmp
+                    BmwCenterWidgetProvider.updateAllWidgets(this@RadioService)
                     mainExecutor.execute {
                         if (index < player.mediaItemCount) {
                             val currentItem = player.getMediaItemAt(index)
@@ -443,12 +458,8 @@ class RestartReceiver : BroadcastReceiver() {
         val action = intent?.action
         val shouldStandby = (action == RadioService.ACTION_RESTART_STANDBY)
 
-        val prefs = context.getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
-        val forceMode = prefs.getString("force_display_mode", "auto") ?: "auto"
-        val isPortraitMode = (forceMode == "portrait") ||
-                (context.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT && forceMode != "landscape")
-
-        val targetAction = if (shouldStandby || isPortraitMode) {
+        val isCarConnected = MainActivity.isCarConnectedState
+        val targetAction = if (shouldStandby || !isCarConnected) {
             RadioService.ACTION_RESTART_STANDBY
         } else {
             RadioService.ACTION_START_PLAY

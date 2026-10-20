@@ -46,12 +46,12 @@ class BMWAccessibilityService : AccessibilityService() {
         return super.onKeyEvent(event)
     }
 
-    private fun returnToLauncher() {
+    fun returnToLauncher() {
         try {
             val intent = Intent(this, MainActivity::class.java).apply {
                 action = Intent.ACTION_MAIN
                 addCategory(Intent.CATEGORY_LAUNCHER)
-                putExtra("EXTRA_F12_RETURN", true)
+                putExtra("EXTRA_CAR_BT_CONNECTED", true)
                 addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
@@ -65,7 +65,7 @@ class BMWAccessibilityService : AccessibilityService() {
             try {
                 val fallback = packageManager.getLaunchIntentForPackage(packageName)
                 fallback?.apply {
-                    putExtra("EXTRA_F12_RETURN", true)
+                    putExtra("EXTRA_CAR_BT_CONNECTED", true)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 if (fallback != null) {
@@ -95,6 +95,42 @@ class BMWAccessibilityService : AccessibilityService() {
         var instance: BMWAccessibilityService? = null
             private set
 
+        fun bringToForeground(context: Context) {
+            val s = instance
+            if (s != null) {
+                s.returnToLauncher()
+            } else {
+                try {
+                    val intent = Intent(context, MainActivity::class.java).apply {
+                        action = Intent.ACTION_MAIN
+                        addCategory(Intent.CATEGORY_LAUNCHER)
+                        putExtra("EXTRA_CAR_BT_CONNECTED", true)
+                        addFlags(
+                            Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                            Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        )
+                    }
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    Log.e(TAG, "bringToForeground fallback error", e)
+                }
+            }
+        }
+
+        fun goToHomeScreen(): Boolean {
+            val s = instance ?: return false
+            return try {
+                val res = s.performGlobalAction(GLOBAL_ACTION_HOME)
+                Log.i(TAG, "performGlobalAction(GLOBAL_ACTION_HOME) returned: $res")
+                res
+            } catch (e: Exception) {
+                Log.e(TAG, "Error performing GLOBAL_ACTION_HOME", e)
+                false
+            }
+        }
+
         fun lockScreen(): Boolean {
             val s = instance ?: return false
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -108,6 +144,29 @@ class BMWAccessibilityService : AccessibilityService() {
                 }
             }
             return false
+        }
+
+        fun goHomeAndLockScreen() {
+            val s = instance
+            if (s != null) {
+                try {
+                    s.performGlobalAction(GLOBAL_ACTION_HOME)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error performing home", e)
+                }
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            val locked = s.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
+                            Log.i(TAG, "goHomeAndLockScreen: lockScreen returned $locked")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error performing lock screen", e)
+                    }
+                }, 450L)
+            } else {
+                Log.w(TAG, "goHomeAndLockScreen: BMWAccessibilityService instance is null! Accessibility service not active.")
+            }
         }
 
         fun isServiceEnabled(context: Context): Boolean {

@@ -6,6 +6,8 @@ import android.app.ActivityOptions
 import android.app.AlertDialog
 import android.app.KeyguardManager
 import android.os.PowerManager
+import android.provider.CallLog
+import java.util.Calendar
 import android.bluetooth.BluetoothA2dp
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
@@ -98,16 +100,6 @@ import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
-import org.maplibre.android.MapLibre
-import org.maplibre.android.camera.CameraPosition
-import org.maplibre.android.camera.CameraUpdateFactory
-import org.maplibre.android.geometry.LatLng
-import org.maplibre.android.location.LocationComponentActivationOptions
-import org.maplibre.android.location.modes.CameraMode
-import org.maplibre.android.location.modes.RenderMode
-import org.maplibre.android.maps.MapLibreMap
-import org.maplibre.android.maps.MapView
-import org.maplibre.android.maps.Style
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -198,6 +190,22 @@ class MainActivity : AppCompatActivity() {
 
     private var currentMode = CenterMode.BMW
     private var isNightMode = true
+    enum class BrightnessMode {
+        DAY,
+        NIGHT,
+        AUTO
+    }
+
+    private var currentBrightnessMode: BrightnessMode = BrightnessMode.AUTO
+
+    data class RecentCall(
+        val name: String,
+        val number: String,
+        val type: Int,
+        val date: Long,
+        val photo: Bitmap?
+    )
+
     private var isFirstRadioConnect = true
 
     // YouTube Live Video in Center Circle
@@ -254,19 +262,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var centerCircle: FrameLayout
     private lateinit var viewCenterBmw: FrameLayout
     private lateinit var viewCenterMedia: FrameLayout
+    private lateinit var layoutMediaEmptyState: RelativeLayout
+    private lateinit var tvMediaEmptySubtitle: TextView
     private lateinit var centerMediaThumbnail: ImageView
     private lateinit var centerMediaSource: TextView
     private lateinit var centerMediaTitle: TextView
     private lateinit var centerMediaArtist: TextView
-
-    private lateinit var viewCenterMap: FrameLayout
-    private lateinit var centerMapView: MapView
-    private lateinit var mapSpeedText: TextView
-    private lateinit var btnMapRecenter: TextView
-    private var mapLibreMap: MapLibreMap? = null
-    private var isMapTrackingGps = true
-    private var lastCameraAnimTime = 0L
-    private var lastSpeedBucket = -1
     private var lastKnownLocation: Location? = null
 
     private lateinit var viewCenterRadio: LinearLayout
@@ -306,6 +307,12 @@ class MainActivity : AppCompatActivity() {
 
     // Car Notification Center View UI
     private lateinit var viewCenterNotification: RelativeLayout
+    private lateinit var notifHeaderRow: RelativeLayout
+    private lateinit var notifCenterContent: LinearLayout
+    private lateinit var notifBottomActions: LinearLayout
+    private lateinit var layoutNotifEmptyState: LinearLayout
+    private lateinit var btnNotifPrev: ImageButton
+    private lateinit var btnNotifNext: ImageButton
     private lateinit var ivNotifAppIcon: ImageView
     private lateinit var tvNotifAppName: TextView
     private lateinit var tvNotifTime: TextView
@@ -319,8 +326,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvNotifActionText: TextView
     private lateinit var btnNotifSpeak: LinearLayout
     private var tvNotifCounter: TextView? = null
-    private var notifGestureDetector: GestureDetector? = null
-    private var isNotifSwipeHandled = false
     private var activeNotification: CarNotification? = null
     private var preNotificationMode: CenterMode = CenterMode.BMW
     private val notifDismissHandler = Handler(Looper.getMainLooper())
@@ -364,20 +369,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvNotifAccessStatus: TextView
     private lateinit var btnCarBtSelect: LinearLayout
     private lateinit var tvCarBtStatus: TextView
-    private lateinit var btnToggleForceDisplayMode: LinearLayout
-    private lateinit var tvDisplayModeStatus: TextView
-    private lateinit var tvDisplayModeBadge: TextView
     private var tvNavSourceLabel: TextView? = null
     private var centerNavIconImg: ImageView? = null
 
     // Bluetooth Car Detection & Orientation
     private var a2dpProxy: BluetoothA2dp? = null
     private var headsetProxy: BluetoothHeadset? = null
-    private var portraitGestureDetector: GestureDetector? = null
 
-    fun isPortraitOrientation(): Boolean {
-        return resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-    }
+    fun isPortraitOrientation(): Boolean = false
 
     private val requestBtConnectPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -417,40 +416,55 @@ class MainActivity : AppCompatActivity() {
                 BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
                     if (isCarDevice && devAddress.isNotEmpty()) {
                         Log.i("MainActivity", "Car device ACL disconnected: $devName ($devAddress)")
-                        prefs.edit().putString("force_display_mode", "auto").apply()
                         isCarConnectedState = false
                         lastDisconnectTimestamp = android.os.SystemClock.elapsedRealtime()
-                        checkBluetoothConnectionAndUpdateOrientation()
-                        lockScreenIfPossible()
+                        stopAllAudioPlayers()
+                        try {
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                            clearShowWhenLocked()
+                        } catch (_: Exception) {}
+                        val homeDone = BMWAccessibilityService.goToHomeScreen()
+                        if (!homeDone) {
+                            try {
+                                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                                    addCategory(Intent.CATEGORY_HOME)
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                }
+                                startActivity(homeIntent)
+                            } catch (_: Exception) {}
+                        }
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            BMWAccessibilityService.lockScreen()
+                        }, 450L)
                     }
                 }
                 BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED -> {
                     val state = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1)
                     if (isCarDevice && state == BluetoothProfile.STATE_CONNECTED) {
                         Log.i("MainActivity", "Car device A2DP connected: $devName")
-                        prefs.edit().putString("force_display_mode", "auto").apply()
                         lastDisconnectTimestamp = 0L
                         isCarConnectedState = true
-                        checkBluetoothConnectionAndUpdateOrientation()
+                        startRadioPlayback()
+                        BMWAccessibilityService.bringToForeground(this@MainActivity)
                     }
                 }
                 BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED -> {
                     val state = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1)
                     if (isCarDevice && state == BluetoothProfile.STATE_CONNECTED) {
                         Log.i("MainActivity", "Car device Headset connected: $devName")
-                        prefs.edit().putString("force_display_mode", "auto").apply()
                         lastDisconnectTimestamp = 0L
                         isCarConnectedState = true
-                        checkBluetoothConnectionAndUpdateOrientation()
+                        startRadioPlayback()
+                        BMWAccessibilityService.bringToForeground(this@MainActivity)
                     }
                 }
                 BluetoothDevice.ACTION_ACL_CONNECTED -> {
                     if (isCarDevice && devAddress.isNotEmpty()) {
                         Log.i("MainActivity", "Car device ACL connected: $devName ($devAddress)")
-                        prefs.edit().putString("force_display_mode", "auto").apply()
                         lastDisconnectTimestamp = 0L
                         isCarConnectedState = true
-                        checkBluetoothConnectionAndUpdateOrientation()
+                        startRadioPlayback()
+                        BMWAccessibilityService.bringToForeground(this@MainActivity)
                     }
                 }
                 BluetoothAdapter.ACTION_STATE_CHANGED -> {
@@ -459,8 +473,11 @@ class MainActivity : AppCompatActivity() {
                         Log.i("MainActivity", "Bluetooth adapter turned off")
                         isCarConnectedState = false
                         lastDisconnectTimestamp = android.os.SystemClock.elapsedRealtime()
-                        checkBluetoothConnectionAndUpdateOrientation()
-                        lockScreenIfPossible()
+                        stopAllAudioPlayers()
+                        BMWAccessibilityService.goToHomeScreen()
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            BMWAccessibilityService.lockScreen()
+                        }, 350L)
                     }
                 }
             }
@@ -541,11 +558,6 @@ class MainActivity : AppCompatActivity() {
             bottomGpsCount?.text = "⌖ LOCK"
 
             // Actualizare badge viteza pe harta
-            mapSpeedText.text = "$speedInt"
-
-            // Actualizare camera 3D MapLibre cand este activa urmarirea GPS
-            val isInitialZoomNeeded = (mapLibreMap?.cameraPosition?.zoom ?: 0.0) < 5.0
-            updateMapLibreCamera(location, speedKmh, force = isInitialZoomNeeded)
         }
         override fun onProviderEnabled(provider: String) {
             centerSpeedSub.text = "GPS CONECTAT"
@@ -588,8 +600,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Initializare MapLibre Native SDK inainte de setContentView
-        MapLibre.getInstance(this)
 
         if (intent.getBooleanExtra("EXTRA_CAR_BT_CONNECTED", false)) {
             isCarConnectedState = true
@@ -597,7 +607,7 @@ class MainActivity : AppCompatActivity() {
 
         checkAndRequestBluetoothPermissions()
         initBluetoothProfiles()
-        applyTargetOrientation()
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
 
         val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
         isNightMode = prefs.getBoolean("night_mode", true)
@@ -606,12 +616,15 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         initViews(savedInstanceState)
-        setNightMode(isNightMode, showToast = false)
-        setupListeners()
-        if (isPortraitOrientation()) {
-            stopAllAudioPlayers()
+        val bModeStr = prefs.getString("brightness_mode", "auto") ?: "auto"
+        currentBrightnessMode = when (bModeStr) {
+            "day" -> BrightnessMode.DAY
+            "night" -> BrightnessMode.NIGHT
+            else -> BrightnessMode.AUTO
         }
-        updateCenterModeUI()
+        setBrightnessMode(currentBrightnessMode, showToast = false)
+        setupListeners()
+                updateCenterModeUI()
         refreshStations()
 
         instance = this
@@ -628,14 +641,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun enableImmersiveMode() {
-        // În modul Mașină (Landscape) dacă ecranul este activ, îl ținem deschis pe durata utilizării bordului.
-        // În modul Portret (Telefon) ecranul se oprește/blochează conform setărilor de sistem (screen timeout).
-        if (isPortraitOrientation() || determineTargetOrientation() == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
-            clearShowWhenLocked()
-            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        } else {
-            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         // Permite desenarea bordului pe 100% din ecran fizic (inclusiv in jurul camerei de selfie, eliminand banda neagra)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -717,6 +723,8 @@ class MainActivity : AppCompatActivity() {
         btnYtBack = findViewById(R.id.btn_yt_back)
         btnYtDockCircle = findViewById(R.id.btn_yt_dock_circle)
 
+        layoutMediaEmptyState = findViewById(R.id.layout_media_empty_state)
+        tvMediaEmptySubtitle = findViewById(R.id.tv_media_empty_subtitle)
         centerMediaThumbnail = findViewById(R.id.center_media_thumbnail)
         centerMediaScrim = findViewById(R.id.center_media_scrim)
         centerMediaInfoContainer = findViewById(R.id.center_media_info_container)
@@ -725,15 +733,6 @@ class MainActivity : AppCompatActivity() {
         centerMediaArtist = findViewById(R.id.center_media_artist)
 
         initYouTubeWebView()
-
-        // Harta Rotunda Live (MapLibre 3D Vector)
-        viewCenterMap = findViewById(R.id.view_center_map)
-        viewCenterMap.outlineProvider = circleOutlineProvider
-        viewCenterMap.clipToOutline = true
-        centerMapView = findViewById(R.id.center_map_view)
-        mapSpeedText = findViewById(R.id.map_speed_text)
-        btnMapRecenter = findViewById(R.id.btn_map_recenter)
-        initCenterMapView(savedInstanceState)
 
         viewCenterRadio = findViewById(R.id.view_center_radio)
         viewCenterRadio.outlineProvider = circleOutlineProvider
@@ -769,6 +768,12 @@ class MainActivity : AppCompatActivity() {
         viewCenterNotification = findViewById(R.id.view_center_notification)
         viewCenterNotification.outlineProvider = circleOutlineProvider
         viewCenterNotification.clipToOutline = true
+        notifHeaderRow = findViewById(R.id.notif_header_row)
+        notifCenterContent = findViewById(R.id.notif_center_content)
+        notifBottomActions = findViewById(R.id.notif_bottom_actions)
+        layoutNotifEmptyState = findViewById(R.id.layout_notif_empty_state)
+        btnNotifPrev = findViewById(R.id.btn_notif_prev)
+        btnNotifNext = findViewById(R.id.btn_notif_next)
         ivNotifAppIcon = findViewById(R.id.iv_notif_app_icon)
         tvNotifAppName = findViewById(R.id.tv_notif_app_name)
         tvNotifTime = findViewById(R.id.tv_notif_time)
@@ -783,13 +788,25 @@ class MainActivity : AppCompatActivity() {
         tvNotifActionText = findViewById(R.id.tv_notif_action_text)
         btnNotifSpeak = findViewById(R.id.btn_notif_speak)
 
-        setupNotifGestureDetector()
+        btnNotifPrev.isFocusable = true
+        btnNotifPrev.isFocusableInTouchMode = true
+        btnNotifPrev.enableInstantClickOnTouch()
+        btnNotifPrev.setOnClickListener {
+            navigateToPreviousNotification()
+        }
+
+        btnNotifNext.isFocusable = true
+        btnNotifNext.isFocusableInTouchMode = true
+        btnNotifNext.enableInstantClickOnTouch()
+        btnNotifNext.setOnClickListener {
+            navigateToNextNotification()
+        }
 
         btnNotifClose.isFocusable = true
         btnNotifClose.isFocusableInTouchMode = true
         btnNotifClose.enableInstantClickOnTouch()
         btnNotifClose.setOnClickListener {
-            dismissNotification()
+            dismissCurrentNotificationWithAnim()
         }
 
         btnNotifAction.isFocusable = true
@@ -874,14 +891,8 @@ class MainActivity : AppCompatActivity() {
         // Abonare la evenimentele de notificare
         CarNotificationHub.onNotificationReceived = { notif ->
             displayNotification(notif)
-            if (isPortraitOrientation()) {
-                updateNetworkStatus()
-            }
         }
         CarNotificationHub.onUnreadCountChanged = { _ ->
-            if (isPortraitOrientation()) {
-                updateNetworkStatus()
-            }
         }
         CarNotificationHub.onNotificationsListChanged = { _ ->
             checkAndShowPendingNotifications()
@@ -971,9 +982,6 @@ class MainActivity : AppCompatActivity() {
         tvNotifAccessStatus = findViewById(R.id.tv_notif_access_status)
         btnCarBtSelect = findViewById(R.id.btn_car_bt_select)
         tvCarBtStatus = findViewById(R.id.tv_car_bt_status)
-        btnToggleForceDisplayMode = findViewById(R.id.btn_toggle_force_display_mode)
-        tvDisplayModeStatus = findViewById(R.id.tv_display_mode_status)
-        tvDisplayModeBadge = findViewById(R.id.tv_display_mode_badge)
 
         tvNavSourceLabel = findViewById(R.id.tv_nav_source_label)
         centerNavIconImg = findViewById(R.id.center_nav_icon_img)
@@ -1031,7 +1039,6 @@ class MainActivity : AppCompatActivity() {
         viewCenterRadio.enableInstantClickOnTouch()
         viewCenterMedia.enableInstantClickOnTouch()
         youtubeCircleTouchOverlay.enableInstantClickOnTouch()
-        viewCenterMap.enableInstantClickOnTouch()
         viewCenterEnergy.enableInstantClickOnTouch()
 
         // Butoane din ferestrele auxiliare - clic instant la prima atingere
@@ -1048,128 +1055,8 @@ class MainActivity : AppCompatActivity() {
             btn.enableInstantClickOnTouch()
         }
 
-        if (isPortraitOrientation()) {
-            setupPortraitMode()
-        }
-
+        
         focusPlayPauseButton()
-    }
-
-    private fun initCenterMapView(savedInstanceState: Bundle?) {
-        // Harta 3D MapLibre este anulata si inlocuita cu notificarile de navigatie Google Maps
-        return
-    }
-
-    private fun setupPortraitMode() {
-        // 1. Top status pill clic lung -> Deschide Setari
-        val topStatusPill = findViewById<View>(R.id.top_status_pill)
-        topStatusPill?.isLongClickable = true
-        topStatusPill?.setOnLongClickListener {
-            showSettingsOverlay()
-            true
-        }
-
-        // 2. Cercul central clic lung -> Deschide Setari
-        centerCircle.isLongClickable = true
-        centerCircle.setOnLongClickListener {
-            showSettingsOverlay()
-            true
-        }
-        viewCenterBmw.isLongClickable = true
-        viewCenterBmw.setOnLongClickListener {
-            showSettingsOverlay()
-            true
-        }
-
-        // 3. Indicator discret permisiune notificari
-        findViewById<View>(R.id.tv_portrait_notif_perm_indicator)?.setOnClickListener {
-            try {
-                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-            } catch (_: Exception) {}
-        }
-
-        // 4. Buton Cancel / Inchide notificare in cercul din modul Portret
-        findViewById<View>(R.id.btn_notif_close_wrapper)?.setOnClickListener {
-            dismissNotification()
-        }
-
-        // 4b. Buton / Pill notificari din bara de sus deschide panoul de notificari al telefonului
-        findViewById<View>(R.id.port_notif_container)?.setOnClickListener {
-            openNotificationShade()
-        }
-
-        // 5. Grila de 8 aplicatii (Click transparent peste grafica de fundal cu ripple)
-        findViewById<View>(R.id.btn_port_gallery)?.setOnClickListener { launchGalleryApp() }
-        findViewById<View>(R.id.btn_port_facebook)?.setOnClickListener { launchFacebookApp() }
-        findViewById<View>(R.id.btn_port_play_store)?.setOnClickListener { launchPlayStoreApp() }
-        findViewById<View>(R.id.btn_port_files)?.setOnClickListener { launchFilesApp() }
-        findViewById<View>(R.id.btn_port_home_assistant)?.setOnClickListener { launchHomeAssistantApp() }
-        findViewById<View>(R.id.btn_port_notes)?.setOnClickListener { launchNotesApp() }
-        findViewById<View>(R.id.btn_port_wallet)?.setOnClickListener { launchWalletApp() }
-        findViewById<View>(R.id.btn_port_chrome)?.setOnClickListener { launchChromeApp() }
-
-        // 6. Dock-ul de jos (3 butoane principale)
-        findViewById<View>(R.id.btn_port_phone)?.setOnClickListener { launchPhoneDialer() }
-        findViewById<View>(R.id.btn_port_whatsapp)?.setOnClickListener { launchWhatsApp() }
-        findViewById<View>(R.id.btn_port_camera)?.setOnClickListener { launchCameraApp() }
-
-        val portraitInteractiveViews = listOfNotNull(
-            topStatusPill,
-            findViewById<View>(R.id.port_notif_container),
-            findViewById<View>(R.id.btn_port_gallery),
-            findViewById<View>(R.id.btn_port_facebook),
-            findViewById<View>(R.id.btn_port_play_store),
-            findViewById<View>(R.id.btn_port_files),
-            findViewById<View>(R.id.btn_port_home_assistant),
-            findViewById<View>(R.id.btn_port_notes),
-            findViewById<View>(R.id.btn_port_wallet),
-            findViewById<View>(R.id.btn_port_chrome),
-            findViewById<View>(R.id.btn_port_phone),
-            findViewById<View>(R.id.btn_port_whatsapp),
-            findViewById<View>(R.id.btn_port_camera),
-            findViewById<View>(R.id.btn_notif_close_wrapper),
-            findViewById<View>(R.id.tv_portrait_notif_perm_indicator)
-        )
-        portraitInteractiveViews.forEach { view ->
-            view.isFocusable = true
-            view.enableInstantClickOnTouch()
-        }
-
-        setupPortraitGestures()
-    }
-
-    private fun setupPortraitGestures() {
-        portraitGestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onFling(
-                e1: MotionEvent?,
-                e2: MotionEvent,
-                velocityX: Float,
-                velocityY: Float
-            ): Boolean {
-                if (e1 == null) return false
-                if (::appsOverlayContainer.isInitialized && appsOverlayContainer.visibility == View.VISIBLE) return false
-                if (::settingsOverlayContainer.isInitialized && settingsOverlayContainer.visibility == View.VISIBLE) return false
-                if (::favoritesOverlayContainer.isInitialized && favoritesOverlayContainer.visibility == View.VISIBLE) return false
-                if (::radioOverlayContainer.isInitialized && radioOverlayContainer.visibility == View.VISIBLE) return false
-                if (::musicOverlayContainer.isInitialized && musicOverlayContainer.visibility == View.VISIBLE) return false
-                if (::callOverlayContainer.isInitialized && callOverlayContainer.visibility == View.VISIBLE) return false
-
-                val diffY = e2.y - e1.y
-                val diffX = e2.x - e1.x
-                if (Math.abs(diffY) > Math.abs(diffX) && Math.abs(diffY) > 100 && Math.abs(velocityY) > 150) {
-                    if (diffY < 0) {
-                        // Swipe Up -> Sertar aplicatii
-                        openAllApps()
-                        return true
-                    } else {
-                        // Swipe Down -> Bara notificari
-                        expandStatusBar()
-                        return true
-                    }
-                }
-                return false
-            }
-        })
     }
 
     private fun expandStatusBar() {
@@ -1382,76 +1269,6 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
         } catch (e: Exception) {
             Toast.makeText(this, "Camera foto indisponibilă", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun enableLocationComponent(style: Style) {
-        val map = mapLibreMap ?: return
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            return
-        }
-
-        try {
-            val locationComponent = map.locationComponent
-            val activationOptions = LocationComponentActivationOptions.builder(this, style)
-                .useDefaultLocationEngine(true)
-                .build()
-            locationComponent.activateLocationComponent(activationOptions)
-            locationComponent.isLocationComponentEnabled = true
-            locationComponent.cameraMode = CameraMode.NONE
-            locationComponent.renderMode = RenderMode.COMPASS
-
-            lastKnownLocation?.let { loc ->
-                locationComponent.forceLocationUpdate(loc)
-            }
-        } catch (_: Exception) {}
-    }
-
-    private fun updateMapLibreCamera(location: Location, speedKmh: Float, force: Boolean = false) {
-        val map = mapLibreMap ?: return
-        if (currentMode != CenterMode.MAP && !force) return
-        if (!isMapTrackingGps && !force) return
-
-        val now = System.currentTimeMillis()
-        // Stabilire viteza (bucket) pentru zoom si tilt 3D:
-        // 0: sub 25 km/h -> zoom 18.0, tilt 35.0 (giratorii, manevre)
-        // 1: 25 - 60 km/h -> zoom 16.5, tilt 52.0 (perspectiva 3D strada oras)
-        // 2: peste 60 km/h -> zoom 15.0, tilt 60.0 (drum intins orizont)
-        val bucket = when {
-            speedKmh < 25f -> 0
-            speedKmh < 60f -> 1
-            else -> 2
-        }
-
-        val debounceExpired = (now - lastCameraAnimTime > 2500L)
-        if (!debounceExpired && bucket != lastSpeedBucket && !force) {
-            // Nu oscilam brusc camera daca inca nu a trecut intervalul de debounce
-            return
-        }
-
-        val (targetZoom, targetTilt) = when (bucket) {
-            0 -> Pair(18.0, 35.0)
-            1 -> Pair(16.5, 52.0)
-            else -> Pair(15.0, 60.0)
-        }
-
-        lastSpeedBucket = bucket
-        lastCameraAnimTime = now
-
-        val targetLatLng = LatLng(location.latitude, location.longitude)
-        val bearing = if (location.hasBearing() && speedKmh > 2.0f) location.bearing.toDouble() else map.cameraPosition.bearing
-
-        val cameraPosition = CameraPosition.Builder()
-            .target(targetLatLng)
-            .bearing(bearing)
-            .zoom(targetZoom)
-            .tilt(targetTilt)
-            .build()
-
-        if (map.cameraPosition.zoom < 5.0) {
-            map.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition), 1500)
-        } else {
-            map.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition), 1000)
         }
     }
 
@@ -1820,7 +1637,7 @@ class MainActivity : AppCompatActivity() {
         youtubeCircleTouchOverlay.visibility = View.GONE
         centerMediaScrim.visibility = View.GONE
         centerMediaInfoContainer.visibility = View.GONE
-        centerMediaThumbnail.visibility = View.VISIBLE
+        updateMediaCenterView()
         youtubeWebView?.evaluateJavascript("window.__bmwUserPaused = true; var v = document.querySelector('video'); if (v) v.pause();", null)
         updateNowPlayingBar()
     }
@@ -1854,6 +1671,8 @@ class MainActivity : AppCompatActivity() {
                 }
             } else {
                 controller?.seekToPreviousMediaItem()
+                controller?.prepare()
+                controller?.play()
             }
         }
         btnPlayPause.setOnClickListener {
@@ -1867,8 +1686,14 @@ class MainActivity : AppCompatActivity() {
                             try {
                                 ExternalMediaManager.getActiveMusicController(this)?.transportControls?.pause()
                             } catch (_: Exception) {}
+                            c.prepare()
                             c.play()
                         }
+                    } ?: run {
+                        val intent = Intent(this, RadioService::class.java).apply {
+                            action = RadioService.ACTION_START_PLAY
+                        }
+                        ContextCompat.startForegroundService(this, intent)
                     }
                 }
                 CenterMode.MEDIA -> {
@@ -1915,14 +1740,21 @@ class MainActivity : AppCompatActivity() {
                             am?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
                             am?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
                         }
-                        if (isPortraitOrientation() || determineTargetOrientation() == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
-                            stopAllAudioPlayers()
-                            return@setOnClickListener
-                        }
+                    } else {
+                        // Niciun player nu canta in acest moment: apasarea pe PLAY porneste Radio-ul!
+                        stopYouTubeWebPlayer()
                         try {
                             ExternalMediaManager.getActiveMusicController(this)?.transportControls?.pause()
                         } catch (_: Exception) {}
-                        controller?.play()
+                        controller?.let { c ->
+                            c.prepare()
+                            c.play()
+                        } ?: run {
+                            val intent = Intent(this, RadioService::class.java).apply {
+                                action = RadioService.ACTION_START_PLAY
+                            }
+                            ContextCompat.startForegroundService(this, intent)
+                        }
                     }
                 }
             }
@@ -1962,6 +1794,8 @@ class MainActivity : AppCompatActivity() {
                 }
             } else {
                 controller?.seekToNextMediaItem()
+                controller?.prepare()
+                controller?.play()
             }
         }
 
@@ -1973,9 +1807,9 @@ class MainActivity : AppCompatActivity() {
             adjustVolume(AudioManager.ADJUST_RAISE)
         }
 
-        // Night Mode / Settings
+        // Night Mode / Settings / Auto Brightness
         btnNightMode.setOnClickListener {
-            setNightMode(!isNightMode, showToast = true)
+            cycleBrightnessMode(showToast = true)
         }
         btnQuickSettings.setOnClickListener {
             showSettingsOverlay()
@@ -2002,10 +1836,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         viewCenterNotification.setOnClickListener {
-            if (isNotifSwipeHandled) {
-                isNotifSwipeHandled = false
-                return@setOnClickListener
-            }
             cycleCenterMode()
         }
 
@@ -2042,26 +1872,29 @@ class MainActivity : AppCompatActivity() {
             dockYouTubeToCircle()
         }
 
-        viewCenterMap.setOnClickListener {
-            cycleCenterMode()
-        }
-
-        findViewById<View?>(R.id.map_speed_badge)?.setOnClickListener {
-            cycleCenterMode()
-        }
-
-        btnMapRecenter.setOnClickListener {
-            isMapTrackingGps = true
-            btnMapRecenter.visibility = View.GONE
-            lastKnownLocation?.let { loc ->
-                val speedKmh = if (loc.hasSpeed()) loc.speed * 3.6f else 0f
-                updateMapLibreCamera(loc, speedKmh, force = true)
-            }
-        }
-
-        // L1: RADIO - Deschide direct lista cu posturile radio (Station Picker Dialog)
+        
+        // L1: RADIO - Comută cercul central pe Radio și pornește redarea (sau deschide lista la apăsare repetată / lungă)
         btnLeft1.setOnClickListener {
-            showStationPickerDialog()
+            if (currentMode != CenterMode.RADIO) {
+                val prev = currentMode
+                currentMode = CenterMode.RADIO
+                updateCenterModeUI(animateFrom = prev)
+                stopYouTubeWebPlayer()
+                try {
+                    ExternalMediaManager.getActiveMusicController(this)?.transportControls?.pause()
+                } catch (_: Exception) {}
+                controller?.let { c ->
+                    c.prepare()
+                    c.play()
+                } ?: run {
+                    val intent = Intent(this, RadioService::class.java).apply {
+                        action = RadioService.ACTION_START_PLAY
+                    }
+                    ContextCompat.startForegroundService(this, intent)
+                }
+            } else {
+                showStationPickerDialog()
+            }
         }
         btnLeft1.setOnLongClickListener {
             showStationPickerDialog()
@@ -2092,9 +1925,9 @@ class MainActivity : AppCompatActivity() {
             true
         }
 
-        // R1: PHONE - Deschide fereastra cu Contacte Favorite (sau dialer la apasare lunga)
+        // R1: PHONE - Deschide fereastra cu Apeluri Recente (sau dialer la apasare lunga)
         btnRight1.setOnClickListener {
-            showFavoritesOverlay()
+            showRecentCallsOverlay()
         }
         btnRight1.setOnLongClickListener {
             launchPhoneDialer()
@@ -2122,39 +1955,30 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun cycleCenterMode() {
-        if (isPortraitOrientation()) {
-            val previousMode = currentMode
-            val hasNotifs = CarNotificationHub.unreadNotifications.isNotEmpty()
-            currentMode = when (currentMode) {
-                CenterMode.BMW -> if (hasNotifs) CenterMode.NOTIFICATION else CenterMode.ENERGY
-                CenterMode.NOTIFICATION -> CenterMode.ENERGY
-                CenterMode.ENERGY -> CenterMode.BMW
-                else -> CenterMode.BMW
-            }
-            if (currentMode == CenterMode.NOTIFICATION) {
-                val notif = activeNotification?.takeIf { act -> CarNotificationHub.unreadNotifications.any { it.key == act.key } }
-                    ?: CarNotificationHub.unreadNotifications.firstOrNull()
-                if (notif != null) {
-                    displayNotification(notif)
-                    return
-                }
-            }
-            updateCenterModeUI(animateFrom = previousMode)
-            if (currentMode == CenterMode.ENERGY) {
-                fetchAndDisplayEnergyData()
-            }
-            return
-        }
         val previousMode = currentMode
         currentMode = when (currentMode) {
-            CenterMode.BMW -> CenterMode.MEDIA
+            CenterMode.BMW -> CenterMode.NOTIFICATION
+            CenterMode.NOTIFICATION -> CenterMode.MEDIA
             CenterMode.MEDIA -> CenterMode.RADIO
             CenterMode.RADIO -> CenterMode.MAP
             CenterMode.MAP -> CenterMode.ENERGY
             CenterMode.ENERGY -> CenterMode.BMW
-            CenterMode.NOTIFICATION -> preNotificationMode
         }
         updateCenterModeUI(animateFrom = previousMode)
+
+        if (currentMode == CenterMode.RADIO) {
+            controller?.let { c ->
+                updateRadioUI(c)
+                if (!c.isPlaying && !ExternalMediaManager.currentData.isPlaying && !(isYouTubeWebMode && isYouTubeWebPlaying)) {
+                    stopYouTubeWebPlayer()
+                    try {
+                        ExternalMediaManager.getActiveMusicController(this)?.transportControls?.pause()
+                    } catch (_: Exception) {}
+                    c.prepare()
+                    c.play()
+                }
+            }
+        }
 
         if (currentMode == CenterMode.MEDIA && !isYouTubeWebMode) {
             ExternalMediaManager.syncActiveSessions(this)
@@ -2185,6 +2009,30 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun isMonochromeBitmap(bmp: Bitmap): Boolean {
+        return try {
+            val w = bmp.width
+            val h = bmp.height
+            for (step in 0 until 12) {
+                val x = (step * w / 12).coerceIn(0, w - 1)
+                val y = (step * h / 12).coerceIn(0, h - 1)
+                val pixel = bmp.getPixel(x, y)
+                val alpha = (pixel shr 24) and 0xff
+                if (alpha > 30) {
+                    val r = (pixel shr 16) and 0xff
+                    val g = (pixel shr 8) and 0xff
+                    val b = pixel and 0xff
+                    if (Math.abs(r - g) > 15 || Math.abs(r - b) > 15 || Math.abs(g - b) > 15) {
+                        return false
+                    }
+                }
+            }
+            true
+        } catch (_: Exception) {
+            true
+        }
+    }
+
     private fun updateWazeUI(data: WazeNavData) {
         centerWazeDistance.text = data.distance
         centerWazeRoad.text = data.road
@@ -2194,20 +2042,17 @@ class MainActivity : AppCompatActivity() {
 
         if (data.iconBitmap != null) {
             centerNavIconImg?.setImageBitmap(data.iconBitmap)
+            if (isMonochromeBitmap(data.iconBitmap)) {
+                centerNavIconImg?.setColorFilter(ContextCompat.getColor(this, R.color.bmw_amber))
+            } else {
+                centerNavIconImg?.clearColorFilter()
+            }
             centerNavIconImg?.visibility = View.VISIBLE
             centerWazeIcon.visibility = View.GONE
         } else {
             centerNavIconImg?.visibility = View.GONE
             centerWazeIcon.visibility = View.VISIBLE
-            val fullText = "${data.distance} ${data.road}".lowercase(Locale.getDefault())
-            centerWazeIcon.text = when {
-                fullText.contains("stanga") || fullText.contains("stânga") || fullText.contains("left") -> "↰"
-                fullText.contains("dreapta") || fullText.contains("right") -> "↱"
-                fullText.contains("giratoriu") || fullText.contains("roundabout") -> "⟳"
-                fullText.contains("inainte") || fullText.contains("înainte") || fullText.contains("straight") -> "↑"
-                fullText.contains("u-turn") || fullText.contains("intoarcere") || fullText.contains("întoarcere") -> "⤺"
-                else -> "🧭"
-            }
+            centerWazeIcon.text = data.directionSymbol ?: "↑"
         }
     }
 
@@ -2235,6 +2080,8 @@ class MainActivity : AppCompatActivity() {
                     v.scaleX = 1f
                     v.scaleY = 1f
                     v.rotation = 0f
+                    v.translationX = 0f
+                    v.translationY = 0f
                     if (mode == CenterMode.MEDIA && isYouTubeWebMode && isYouTubeDockedInCircle) {
                         v.visibility = View.VISIBLE
                         v.alpha = 0f
@@ -2281,6 +2128,8 @@ class MainActivity : AppCompatActivity() {
                     outView.scaleX = 1f
                     outView.scaleY = 1f
                     outView.rotation = 0f
+                    outView.translationX = 0f
+                    outView.translationY = 0f
                     if (animateFrom == CenterMode.MEDIA && isYouTubeWebMode && isYouTubeDockedInCircle && currentMode != CenterMode.MEDIA) {
                         outView.visibility = View.VISIBLE
                         outView.alpha = 0f
@@ -2314,6 +2163,8 @@ class MainActivity : AppCompatActivity() {
                 v.scaleX = 1f
                 v.scaleY = 1f
                 v.rotation = 0f
+                v.translationX = 0f
+                v.translationY = 0f
                 if (mode == currentMode) {
                     v.visibility = View.VISIBLE
                     v.alpha = 1f
@@ -2328,22 +2179,24 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        if (currentMode == CenterMode.MAP) {
-            isMapTrackingGps = true
-            btnMapRecenter.visibility = View.GONE
-            val loc = lastKnownLocation ?: getBestLastKnownLocation()
-            if (loc != null) {
-                lastKnownLocation = loc
-                val speedKmh = if (loc.hasSpeed()) loc.speed * 3.6f else 0f
-                updateMapLibreCamera(loc, speedKmh, force = true)
-            }
-        }
-
+        
         if (currentMode == CenterMode.ENERGY) {
             energyHandler.removeCallbacks(energyPollRunnable)
             energyPollRunnable.run()
         } else {
             energyHandler.removeCallbacks(energyPollRunnable)
+        }
+
+        if (currentMode == CenterMode.NOTIFICATION) {
+            updateNotificationCenterView()
+        }
+
+        if (currentMode == CenterMode.MEDIA) {
+            updateMediaCenterView()
+        }
+
+        if (currentMode == CenterMode.RADIO) {
+            controller?.let { updateRadioUI(it) }
         }
 
         when (currentMode) {
@@ -2430,124 +2283,17 @@ class MainActivity : AppCompatActivity() {
         val now = Date()
         val timeFormat = SimpleDateFormat("H:mm", Locale.getDefault())
         textClock.text = timeFormat.format(now)
-
-        if (isPortraitOrientation()) {
-            if (controller?.isPlaying == true || (isYouTubeWebMode && isYouTubeWebPlaying) || ExternalMediaManager.currentData.isPlaying) {
-                stopAllAudioPlayers()
-            }
-
-            updateNetworkStatus()
-
-            val dateView = findViewById<TextView>(R.id.portrait_date_text)
-            if (dateView != null) {
-                val dateFormat = SimpleDateFormat("EEEE, d MMMM", Locale("ro", "RO"))
-                val dateFormatted = dateFormat.format(now).replaceFirstChar {
-                    if (it.isLowerCase()) it.titlecase(Locale("ro", "RO")) else it.toString()
-                }
-                dateView.text = dateFormatted
-            }
-
-            val permIndicator = findViewById<TextView>(R.id.tv_portrait_notif_perm_indicator)
-            if (permIndicator != null) {
-                val hasAccess = CarNotificationListenerService.isNotificationAccessGranted(this)
-                permIndicator.visibility = if (!hasAccess) View.VISIBLE else View.GONE
-            }
-        }
-    }
-
-    private fun updateNetworkStatus() {
-        val netStatusView = findViewById<TextView>(R.id.port_network_status) ?: return
-        val signalIconView = findViewById<ImageView>(R.id.port_signal_icon)
-        val notifContainer = findViewById<View>(R.id.port_notif_container)
-        val notifCountView = findViewById<TextView>(R.id.port_notif_count)
-
-        // 1. Notificări necitite în bara de sus
-        val unreadCount = CarNotificationHub.getUnreadCount()
-        if (unreadCount > 0) {
-            notifContainer?.visibility = View.VISIBLE
-            notifCountView?.text = "$unreadCount"
-        } else {
-            notifContainer?.visibility = View.GONE
-        }
-
-        // 2. Semnal curat (doar bare verticale albe, fără fond) și tip rețea
-        try {
-            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            val activeNet = cm?.activeNetwork
-            val caps = cm?.getNetworkCapabilities(activeNet)
-
-            if (caps == null || !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
-                signalIconView?.visibility = View.GONE
-                netStatusView.text = "📵 Lipsă semnal"
-                return
-            }
-
-            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                signalIconView?.setImageResource(R.drawable.ic_wifi_white)
-                signalIconView?.visibility = View.VISIBLE
-                netStatusView.text = "Wi-Fi"
-                return
-            }
-
-            signalIconView?.setImageResource(R.drawable.ic_cellular_signal_white)
-            signalIconView?.visibility = View.VISIBLE
-
-            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
-                val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-                val netType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    try {
-                        if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
-                            tm?.dataNetworkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
-                        } else {
-                            TelephonyManager.NETWORK_TYPE_UNKNOWN
-                        }
-                    } catch (_: Exception) {
-                        TelephonyManager.NETWORK_TYPE_UNKNOWN
-                    }
-                } else {
-                    @Suppress("DEPRECATION")
-                    tm?.networkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
-                }
-
-                val typeLabel = when (netType) {
-                    TelephonyManager.NETWORK_TYPE_NR -> "5G"
-                    TelephonyManager.NETWORK_TYPE_LTE -> "4G"
-                    TelephonyManager.NETWORK_TYPE_HSDPA,
-                    TelephonyManager.NETWORK_TYPE_HSPA,
-                    TelephonyManager.NETWORK_TYPE_HSPAP,
-                    TelephonyManager.NETWORK_TYPE_HSUPA,
-                    TelephonyManager.NETWORK_TYPE_UMTS -> "3G"
-                    TelephonyManager.NETWORK_TYPE_EDGE,
-                    TelephonyManager.NETWORK_TYPE_GPRS,
-                    TelephonyManager.NETWORK_TYPE_CDMA,
-                    TelephonyManager.NETWORK_TYPE_1xRTT -> "2G"
-                    else -> "4G"
-                }
-                netStatusView.text = typeLabel
-                return
-            }
-
-            netStatusView.text = "OK"
-        } catch (_: Exception) {
-            signalIconView?.setImageResource(R.drawable.ic_cellular_signal_white)
-            signalIconView?.visibility = View.VISIBLE
-            netStatusView.text = "4G"
-        }
     }
 
     private fun launchNavigationApp() {
         val mapsPackage = "com.google.android.apps.maps"
-        val wazePackage = "com.waze"
         val pm = packageManager
-
         val intent = pm.getLaunchIntentForPackage(mapsPackage)
-            ?: pm.getLaunchIntentForPackage(wazePackage)
             ?: Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q="))
-
         try {
             startActivity(intent)
         } catch (e: Exception) {
-            Toast.makeText(this, "Nicio aplicatie de navigatie gasita", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Google Maps nu a fost gasit", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -2682,8 +2428,7 @@ class MainActivity : AppCompatActivity() {
 
         // Daca in Cercul Central era afisata cealalta aplicatie, actualizeaza imediat afisajul de jos
         if (!ExternalMediaManager.currentData.packageName.equals(resolvedPkg, ignoreCase = true)) {
-            centerMediaThumbnail.setImageResource(R.drawable.bmw_logo)
-            centerMediaThumbnail.visibility = View.VISIBLE
+            updateMediaCenterView()
             bottomTrackTitle.text = "YouTube Music"
             bottomTrackArtist.text = "Selectează o melodie..."
         }
@@ -2861,10 +2606,6 @@ class MainActivity : AppCompatActivity() {
         btnCarBtSelect.setOnClickListener {
             showCarBluetoothPicker()
         }
-
-        btnToggleForceDisplayMode.setOnClickListener {
-            cycleForceDisplayMode()
-        }
     }
 
     private fun showSettingsOverlay() {
@@ -2886,9 +2627,6 @@ class MainActivity : AppCompatActivity() {
         } else {
             tvCarBtStatus.text = "Neselectat (Apasă pentru selectare)"
         }
-
-        val forceMode = prefs.getString("force_display_mode", "auto") ?: "auto"
-        updateDisplayModeUI(forceMode)
 
         val isNotifGranted = CarNotificationListenerService.isNotificationAccessGranted(this)
         val isStorageGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
@@ -2971,38 +2709,6 @@ class MainActivity : AppCompatActivity() {
         }
         builder.setNegativeButton("Anulează", null)
         builder.show()
-    }
-
-    private fun cycleForceDisplayMode() {
-        val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
-        val currentMode = prefs.getString("force_display_mode", "auto") ?: "auto"
-        val nextMode = when (currentMode) {
-            "auto" -> "landscape"
-            "landscape" -> "portrait"
-            else -> "auto"
-        }
-        prefs.edit().putString("force_display_mode", nextMode).apply()
-        updateDisplayModeUI(nextMode)
-        val msg = when (nextMode) {
-            "landscape" -> "Mod Forțat: Mașină (Landscape)"
-            "portrait" -> "Mod Forțat: Portret (Telefon)"
-            else -> "Mod: Automat (urmează conexiunea Bluetooth a mașinii)"
-        }
-        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-        checkBluetoothConnectionAndUpdateOrientation()
-    }
-
-    private fun updateDisplayModeUI(mode: String) {
-        tvDisplayModeStatus.text = when (mode) {
-            "landscape" -> "Forțat Mașină (Landscape)"
-            "portrait" -> "Forțat Portret (Telefon)"
-            else -> "Automat (Bluetooth mașină)"
-        }
-        tvDisplayModeBadge.text = when (mode) {
-            "landscape" -> "MAȘINĂ ›"
-            "portrait" -> "PORTRET ›"
-            else -> "AUTO ›"
-        }
     }
 
     private fun checkAndRequestBluetoothPermissions() {
@@ -3118,22 +2824,6 @@ class MainActivity : AppCompatActivity() {
         return false
     }
 
-    private fun determineTargetOrientation(): Int {
-        val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
-        val forceMode = prefs.getString("force_display_mode", "auto") ?: "auto"
-        return when (forceMode) {
-            "landscape" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            "portrait" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            else -> {
-                if (isCarBluetoothConnected()) {
-                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                } else {
-                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                }
-            }
-        }
-    }
-
     fun stopAllAudioPlayers() {
         try {
             sendBroadcast(Intent(RadioService.ACTION_STOP_RADIO).setPackage(packageName))
@@ -3216,28 +2906,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun applyTargetOrientation() {
-        checkBluetoothConnectionAndUpdateOrientation()
-    }
-
     fun checkBluetoothConnectionAndUpdateOrientation() {
-        val target = determineTargetOrientation()
-        if (target == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
-            clearShowWhenLocked()
-            stopAllAudioPlayers()
-        } else {
-            startRadioPlayback()
-        }
-        if (requestedOrientation != target) {
-            val previousOrientation = requestedOrientation
-            Log.i("MainActivity", "checkBluetoothConnectionAndUpdateOrientation: comutare de la $previousOrientation la $target")
-            requestedOrientation = target
-
-            // Când trece în Mod Portret, blochează ecranul (lock display)
-            if (target == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
-                lockScreenIfPossible()
-            }
-        }
+        // Landscape permanent
     }
 
     fun lockScreenIfPossible() {
@@ -3307,15 +2977,23 @@ class MainActivity : AppCompatActivity() {
                     radioOverlayContainer.visibility = View.GONE
                     focusPlayPauseButton()
                     stopYouTubeWebPlayer()
-                    controller?.let {
-                        try {
-                            ExternalMediaManager.currentData.mediaController?.transportControls?.pause()
-                        } catch (_: Exception) {}
-                        it.seekToDefaultPosition(position)
-                        it.play()
+                    try {
+                        ExternalMediaManager.getActiveMusicController(this@MainActivity)?.transportControls?.pause()
+                    } catch (_: Exception) {}
+                    controller?.let { c ->
+                        c.seekToDefaultPosition(position)
+                        c.prepare()
+                        c.play()
+                    } ?: run {
+                        val intent = Intent(this@MainActivity, RadioService::class.java).apply {
+                            action = RadioService.ACTION_START_PLAY
+                        }
+                        StationManager.saveLastIndex(this@MainActivity, position)
+                        ContextCompat.startForegroundService(this@MainActivity, intent)
                     }
+                    val prev = currentMode
                     currentMode = CenterMode.RADIO
-                    updateCenterModeUI()
+                    updateCenterModeUI(animateFrom = prev)
                 }
 
                 return view
@@ -3502,7 +3180,6 @@ class MainActivity : AppCompatActivity() {
                 if (initialLoc != null) {
                     lastKnownLocation = initialLoc
                     val speedKmh = if (initialLoc.hasSpeed()) initialLoc.speed * 3.6f else 0f
-                    updateMapLibreCamera(initialLoc, speedKmh, force = true)
                 }
 
                 if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
@@ -3558,8 +3235,8 @@ class MainActivity : AppCompatActivity() {
                 centerSpeedSub.text = "PERMISIUNE REFUZATA"
             }
         } else if (requestCode == 2001) {
-            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
-                showFavoritesOverlay()
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED) {
+                showRecentCallsOverlay()
             }
         }
     }
@@ -3569,10 +3246,7 @@ class MainActivity : AppCompatActivity() {
         enableImmersiveMode()
         clockHandler.post(clockRunnable)
         startGpsUpdates()
-        if (!isPortraitOrientation() && mapLibreMap != null) {
-            try { centerMapView.onStart() } catch (_: Exception) {}
-        }
-
+        
         try {
             val batteryStatusIntent = registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
             batteryStatusIntent?.let { bIntent ->
@@ -3622,14 +3296,8 @@ class MainActivity : AppCompatActivity() {
                 }
                 centerMediaScrim.visibility = View.GONE
                 centerMediaInfoContainer.visibility = View.GONE
+                updateMediaCenterView()
                 if (data.title.isNotEmpty()) {
-                    if (data.artBitmap != null) {
-                        centerMediaThumbnail.setImageBitmap(data.artBitmap)
-                        centerMediaThumbnail.visibility = View.VISIBLE
-                    } else {
-                        centerMediaThumbnail.setImageResource(R.drawable.bmw_logo)
-                        centerMediaThumbnail.visibility = View.VISIBLE
-                    }
                     if (data.isPlaying) {
                         // Daca un player exterior ruleaza (YouTube sau YouTube Music), opreste radioul
                         controller?.pause()
@@ -3661,16 +3329,8 @@ class MainActivity : AppCompatActivity() {
         val ctrl = controller ?: return
         updateRadioUI(ctrl)
 
-        if (isPortraitOrientation() || determineTargetOrientation() == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
-            try {
-                ctrl.pause()
-                ctrl.stop()
-                sendBroadcast(Intent(RadioService.ACTION_STOP_RADIO).setPackage(packageName))
-            } catch (_: Exception) {}
-        } else {
-            if (!ctrl.isPlaying && currentMode != CenterMode.MEDIA && !ExternalMediaManager.currentData.isPlaying) {
-                ctrl.play()
-            }
+        if (!ctrl.isPlaying && currentMode != CenterMode.MEDIA && !ExternalMediaManager.currentData.isPlaying) {
+            ctrl.play()
         }
 
         ctrl.addListener(object : Player.Listener {
@@ -3681,13 +3341,12 @@ class MainActivity : AppCompatActivity() {
                 updateRadioUI(ctrl)
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (isPlaying && (isPortraitOrientation() || determineTargetOrientation() == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)) {
-                    try {
-                        ctrl.pause()
-                        ctrl.stop()
-                        sendBroadcast(Intent(RadioService.ACTION_STOP_RADIO).setPackage(packageName))
-                    } catch (_: Exception) {}
-                }
+                updateRadioUI(ctrl)
+            }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                updateRadioUI(ctrl)
+            }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 updateRadioUI(ctrl)
             }
         })
@@ -3719,10 +3378,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
-        if (!isPortraitOrientation() && mapLibreMap != null) {
-            try { centerMapView.onStop() } catch (_: Exception) {}
-        }
-        try {
+                try {
             unregisterReceiver(batteryReceiver)
         } catch (_: Exception) {}
         try {
@@ -3787,16 +3443,9 @@ class MainActivity : AppCompatActivity() {
         isInForeground = true
         currentTaskId = taskId
         ExternalMediaManager.cancelAutoReturn()
-        if (isPortraitOrientation()) {
-            stopAllAudioPlayers()
-        } else {
-            ExternalMediaManager.syncActiveSessions(this)
-        }
-        applyScreenBrightness(isNightMode)
-        if (!isPortraitOrientation() && mapLibreMap != null) {
-            try { centerMapView.onResume() } catch (_: Exception) {}
-        }
-        registerGnssCallback()
+        ExternalMediaManager.syncActiveSessions(this)
+        applyScreenBrightness(currentBrightnessMode)
+                registerGnssCallback()
         focusPlayPauseButton()
         if (currentMode == CenterMode.ENERGY) {
             energyHandler.removeCallbacks(energyPollRunnable)
@@ -3806,14 +3455,8 @@ class MainActivity : AppCompatActivity() {
         // Reconectare / Abonare la notificări
         CarNotificationHub.onNotificationReceived = { notif ->
             displayNotification(notif)
-            if (isPortraitOrientation()) {
-                updateNetworkStatus()
-            }
         }
         CarNotificationHub.onUnreadCountChanged = { _ ->
-            if (isPortraitOrientation()) {
-                updateNetworkStatus()
-            }
         }
         CarNotificationHub.onNotificationsListChanged = { _ ->
             checkAndShowPendingNotifications()
@@ -3824,9 +3467,6 @@ class MainActivity : AppCompatActivity() {
             CarNotificationListenerService.rebindService(this)
             CarNotificationListenerService.instance?.syncActiveNotificationsCount()
             checkAndShowPendingNotifications()
-            if (isPortraitOrientation()) {
-                updateNetworkStatus()
-            }
         }
     }
 
@@ -3849,25 +3489,16 @@ class MainActivity : AppCompatActivity() {
         energyHandler.removeCallbacks(energyPollRunnable)
         currentTaskId = taskId
         ExternalMediaManager.onLauncherPaused(this, taskId)
-        if (!isPortraitOrientation() && mapLibreMap != null) {
-            try { centerMapView.onPause() } catch (_: Exception) {}
-        }
-        unregisterGnssCallback()
+                unregisterGnssCallback()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        if (!isPortraitOrientation() && mapLibreMap != null) {
-            try { centerMapView.onSaveInstanceState(outState) } catch (_: Exception) {}
-        }
-    }
+            }
 
     override fun onLowMemory() {
         super.onLowMemory()
-        if (!isPortraitOrientation() && mapLibreMap != null) {
-            try { centerMapView.onLowMemory() } catch (_: Exception) {}
-        }
-    }
+            }
 
     override fun onDestroy() {
         super.onDestroy()
@@ -3875,10 +3506,7 @@ class MainActivity : AppCompatActivity() {
         VoiceMessagePlayer.stop()
         VoiceMessagePlayer.listener = null
         energyHandler.removeCallbacksAndMessages(null)
-        if (!isPortraitOrientation() && mapLibreMap != null) {
-            try { centerMapView.onDestroy() } catch (_: Exception) {}
-        }
-        try {
+                try {
             textToSpeech?.stop()
             textToSpeech?.shutdown()
         } catch (_: Exception) {}
@@ -3953,86 +3581,179 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupNotifGestureDetector() {
-        notifGestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            private val SWIPE_THRESHOLD = 50
-            private val SWIPE_VELOCITY_THRESHOLD = 50
+    private fun updateMediaCenterView() {
+        runOnUiThread {
+            if (!::layoutMediaEmptyState.isInitialized) return@runOnUiThread
+            val extData = ExternalMediaManager.currentData
+            val isExtPlaying = extData.isPlaying
+            val isYtPlaying = isYouTubeWebMode && isYouTubeWebPlaying
+            val hasActivePlayingSong = isExtPlaying || isYtPlaying
 
-            override fun onDown(e: MotionEvent): Boolean = true
-
-            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
-                if (e1 == null) return false
-                val diffX = e2.x - e1.x
-                val diffY = e2.y - e1.y
-                if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > SWIPE_THRESHOLD && Math.abs(velocityX) > SWIPE_VELOCITY_THRESHOLD) {
-                    isNotifSwipeHandled = true
-                    if (diffX < 0) {
-                        onNotificationSwiped(direction = -1)
-                    } else {
-                        onNotificationSwiped(direction = 1)
-                    }
-                    return true
+            if (isYouTubeWebMode && isYouTubeDockedInCircle) {
+                layoutMediaEmptyState.visibility = View.GONE
+                youtubeCircleContainer.visibility = View.VISIBLE
+                centerMediaThumbnail.visibility = View.GONE
+            } else if (hasActivePlayingSong) {
+                layoutMediaEmptyState.visibility = View.GONE
+                youtubeCircleContainer.visibility = View.GONE
+                centerMediaThumbnail.visibility = View.VISIBLE
+                if (extData.artBitmap != null) {
+                    centerMediaThumbnail.setImageBitmap(extData.artBitmap)
+                } else {
+                    centerMediaThumbnail.setImageResource(R.drawable.img_bmw_cassette)
                 }
-                return false
+            } else {
+                youtubeCircleContainer.visibility = View.GONE
+                centerMediaThumbnail.visibility = View.GONE
+                layoutMediaEmptyState.visibility = View.VISIBLE
+                if (::tvMediaEmptySubtitle.isInitialized) {
+                    tvMediaEmptySubtitle.text = if (extData.title.isNotEmpty()) {
+                        "Apasă Redare sau alege o piesă"
+                    } else {
+                        "Selectează o piesă sau pornește muzica"
+                    }
+                }
             }
-        })
+        }
     }
 
-    private fun onNotificationSwiped(direction: Int) {
+    private fun updateNotificationCenterView() {
+        runOnUiThread {
+            viewCenterNotification.translationX = 0f
+            viewCenterNotification.translationY = 0f
+            viewCenterNotification.scaleX = 1f
+            viewCenterNotification.scaleY = 1f
+            viewCenterNotification.alpha = 1f
+            viewCenterNotification.visibility = View.VISIBLE
+
+            val unreadList = CarNotificationHub.unreadNotifications
+            if (unreadList.isEmpty()) {
+                activeNotification = null
+                layoutNotifEmptyState.visibility = View.VISIBLE
+                notifHeaderRow.visibility = View.GONE
+                notifCenterContent.visibility = View.GONE
+                notifBottomActions.visibility = View.GONE
+                btnNotifPrev.visibility = View.GONE
+                btnNotifNext.visibility = View.GONE
+                tvNotifCounter?.visibility = View.GONE
+            } else {
+                layoutNotifEmptyState.visibility = View.GONE
+                notifHeaderRow.visibility = View.VISIBLE
+                notifCenterContent.visibility = View.VISIBLE
+                notifBottomActions.visibility = View.VISIBLE
+                btnNotifClose.visibility = View.VISIBLE
+
+                val currentKey = activeNotification?.key
+                val notif = unreadList.firstOrNull { it.key == currentKey } ?: unreadList.first()
+                activeNotification = notif
+
+                // Săgețile sunt vizibile permanent pe ecranul de notificări
+                btnNotifPrev.visibility = View.VISIBLE
+                btnNotifNext.visibility = View.VISIBLE
+                btnNotifPrev.alpha = 1.0f
+                btnNotifNext.alpha = 1.0f
+                bindNotificationData(notif)
+            }
+        }
+    }
+
+    private fun navigateToPreviousNotification() {
+        navigateNotificationCarousel(direction = 1)
+    }
+
+    private fun navigateToNextNotification() {
+        navigateNotificationCarousel(direction = -1)
+    }
+
+    private fun navigateNotificationCarousel(direction: Int) {
         val current = activeNotification ?: return
         val unreadList = CarNotificationHub.unreadNotifications
         if (unreadList.isEmpty()) return
 
-        val currentIndex = unreadList.indexOfFirst { it.key == current.key }
-        val slideOutDistance = (viewCenterNotification.width.toFloat().takeIf { it > 0f } ?: 400f) * if (direction < 0) -1f else 1f
+        // Feedback vizual (nudge/bounce stânga-dreapta) dacă există o singură notificare
+        if (unreadList.size <= 1) {
+            val nudgeDistance = if (direction < 0) -22f else 22f
+            viewCenterNotification.animate().cancel()
+            viewCenterNotification.animate()
+                .translationX(nudgeDistance)
+                .setDuration(70)
+                .withEndAction {
+                    viewCenterNotification.animate()
+                        .translationX(0f)
+                        .setDuration(120)
+                        .start()
+                }
+                .start()
+            return
+        }
 
+        val currentIndex = unreadList.indexOfFirst { it.key == current.key }
+        val targetIndex = if (direction < 0) {
+            if (currentIndex >= 0 && currentIndex < unreadList.size - 1) currentIndex + 1 else 0
+        } else {
+            if (currentIndex > 0) currentIndex - 1 else unreadList.size - 1
+        }
+
+        val nextNotif = unreadList[targetIndex]
+        activeNotification = nextNotif
+        VoiceMessagePlayer.stop()
+
+        val width = (viewCenterNotification.width.toFloat().takeIf { it > 0f } ?: 400f)
+        val slideOutDistance = width * if (direction < 0) -0.35f else 0.35f
+
+        viewCenterNotification.animate().cancel()
         viewCenterNotification.animate()
             .translationX(slideOutDistance)
             .alpha(0f)
-            .setDuration(160)
+            .setDuration(110)
             .withEndAction {
+                bindNotificationData(nextNotif)
+                viewCenterNotification.translationX = -slideOutDistance
+                viewCenterNotification.alpha = 0f
+                viewCenterNotification.animate()
+                    .translationX(0f)
+                    .alpha(1f)
+                    .setDuration(140)
+                    .withEndAction {
+                        viewCenterNotification.translationX = 0f
+                        viewCenterNotification.alpha = 1f
+                    }
+                    .start()
+            }
+            .start()
+    }
+
+    private fun dismissCurrentNotificationWithAnim() {
+        val current = activeNotification ?: return
+        VoiceMessagePlayer.stop()
+
+        viewCenterNotification.animate().cancel()
+        viewCenterNotification.animate()
+            .scaleX(0.85f)
+            .scaleY(0.85f)
+            .alpha(0f)
+            .setDuration(120)
+            .withEndAction {
+                viewCenterNotification.scaleX = 1f
+                viewCenterNotification.scaleY = 1f
+                viewCenterNotification.alpha = 1f
+                viewCenterNotification.translationX = 0f
+                viewCenterNotification.translationY = 0f
+
                 try {
                     CarNotificationListenerService.instance?.cancelNotification(current.key)
                 } catch (_: Exception) {}
                 CarNotificationHub.removeNotification(current.key)
 
-                val remaining = CarNotificationHub.unreadNotifications
-                if (remaining.isEmpty()) {
-                    viewCenterNotification.translationX = 0f
-                    viewCenterNotification.alpha = 1f
-                    currentMode = if (isPortraitOrientation()) CenterMode.BMW else preNotificationMode
-                    updateCenterModeUI(animateFrom = CenterMode.NOTIFICATION)
-                } else {
-                    val nextNotif = if (currentIndex >= 0 && currentIndex < remaining.size) {
-                        remaining[currentIndex]
-                    } else {
-                        remaining.first()
-                    }
-                    displayNotification(nextNotif)
-                    viewCenterNotification.translationX = -slideOutDistance
-                    viewCenterNotification.alpha = 0f
-                    viewCenterNotification.animate()
-                        .translationX(0f)
-                        .alpha(1f)
-                        .setDuration(180)
-                        .start()
-                }
+                updateNotificationCenterView()
             }
             .start()
     }
 
     private fun checkAndShowPendingNotifications() {
         runOnUiThread {
-            val unread = CarNotificationHub.unreadNotifications
             if (currentMode == CenterMode.NOTIFICATION) {
-                if (unread.isEmpty()) {
-                    currentMode = if (isPortraitOrientation()) CenterMode.BMW else preNotificationMode
-                    updateCenterModeUI(animateFrom = CenterMode.NOTIFICATION)
-                } else {
-                    val currentKey = activeNotification?.key
-                    val item = unread.firstOrNull { it.key == currentKey } ?: unread.first()
-                    displayNotification(item)
-                }
+                updateNotificationCenterView()
             }
         }
     }
@@ -4046,83 +3767,76 @@ class MainActivity : AppCompatActivity() {
                 currentMode = CenterMode.NOTIFICATION
                 updateCenterModeUI(animateFrom = preNotificationMode)
             } else {
-                updateCenterModeUI()
+                updateNotificationCenterView()
             }
+        }
+    }
 
-            val unreadList = CarNotificationHub.unreadNotifications
-            val total = unreadList.size
-            val currentIndex = unreadList.indexOfFirst { it.key == notif.key }
-            if (total > 1 && currentIndex >= 0) {
-                tvNotifCounter?.visibility = View.VISIBLE
-                tvNotifCounter?.text = "${currentIndex + 1} / $total"
-            } else {
-                tvNotifCounter?.visibility = View.GONE
-            }
+    private fun bindNotificationData(notif: CarNotification) {
+        val unreadList = CarNotificationHub.unreadNotifications
+        val total = unreadList.size
+        val currentIndex = unreadList.indexOfFirst { it.key == notif.key }
+        if (total >= 1 && currentIndex >= 0) {
+            tvNotifCounter?.visibility = View.VISIBLE
+            tvNotifCounter?.text = "${currentIndex + 1} / $total"
+        } else {
+            tvNotifCounter?.visibility = View.GONE
+        }
 
-            // Pictograma aplicatiei
-            if (notif.appIcon != null) {
-                ivNotifAppIcon.setImageDrawable(notif.appIcon)
-            } else {
-                when {
-                    notif.packageName.contains("whatsapp", ignoreCase = true) -> {
-                        ivNotifAppIcon.setImageResource(R.drawable.ic_mask_whatsapp)
-                    }
-                    notif.packageName.contains("gm", ignoreCase = true) || notif.packageName.contains("mail", ignoreCase = true) -> {
-                        ivNotifAppIcon.setImageResource(R.drawable.ic_email)
-                    }
-                    notif.packageName.contains("homeassistant", ignoreCase = true) -> {
-                        ivNotifAppIcon.setImageResource(R.drawable.ic_energy_home)
-                    }
-                    else -> {
-                        ivNotifAppIcon.setImageResource(R.drawable.ic_sms)
-                    }
+        // Pictograma aplicației
+        if (notif.appIcon != null) {
+            ivNotifAppIcon.setImageDrawable(notif.appIcon)
+        } else {
+            when {
+                notif.packageName.contains("whatsapp", ignoreCase = true) -> {
+                    ivNotifAppIcon.setImageResource(R.drawable.ic_mask_whatsapp)
+                }
+                notif.packageName.contains("gm", ignoreCase = true) || notif.packageName.contains("mail", ignoreCase = true) -> {
+                    ivNotifAppIcon.setImageResource(R.drawable.ic_email)
+                }
+                notif.packageName.contains("homeassistant", ignoreCase = true) -> {
+                    ivNotifAppIcon.setImageResource(R.drawable.ic_energy_home)
+                }
+                else -> {
+                    ivNotifAppIcon.setImageResource(R.drawable.ic_sms)
                 }
             }
+        }
 
-            tvNotifAppName.text = notif.appName.uppercase(Locale.getDefault())
-            val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(notif.timestamp))
-            tvNotifTime.text = timeStr
-            tvNotifSender.text = notif.sender
+        tvNotifAppName.text = notif.appName.uppercase(Locale.getDefault())
+        val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(notif.timestamp))
+        tvNotifTime.text = timeStr
+        tvNotifSender.text = notif.sender
 
-            if (notif.isVoiceMessage) {
-                layoutNotifVoiceBadge.visibility = View.VISIBLE
-                tvNotifVoiceLabel.text = "MESAJ VOCAL"
-                tvNotifText.text = if (notif.message.isNotBlank()) notif.message else "Atinge Redare pentru a asculta"
-                ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
-                tvNotifActionText.text = "REDARE"
-                btnNotifSpeak.visibility = View.GONE
-            } else {
-                layoutNotifVoiceBadge.visibility = View.GONE
-                tvNotifText.text = notif.message
-                ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
-                tvNotifActionText.text = "DESCHIDE"
-                btnNotifSpeak.visibility = View.VISIBLE
-            }
+        if (notif.isVoiceMessage) {
+            layoutNotifVoiceBadge.visibility = View.VISIBLE
+            tvNotifVoiceLabel.text = "MESAJ VOCAL"
+            tvNotifText.text = if (notif.message.isNotBlank()) notif.message else "Atinge Redare pentru a asculta"
+            ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
+            tvNotifActionText.text = "REDARE"
+            btnNotifSpeak.visibility = View.GONE
+        } else {
+            layoutNotifVoiceBadge.visibility = View.GONE
+            tvNotifText.text = notif.message
+            ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
+            tvNotifActionText.text = "DESCHIDE"
+            btnNotifSpeak.visibility = View.VISIBLE
+        }
 
-            // Permite focalizarea copiilor din interiorul cercului central
-            centerCircle.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+        centerCircle.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
 
-            // In modul masina -> auto-dismiss dupa 20s; in modul portret -> persistent cat timp sunt notificari in bara
-            resetNotifDismissTimer()
+        resetNotifDismissTimer()
 
-            // Focalizare automata pe butonul de actiune principala
-            btnNotifAction.isFocusable = true
-            btnNotifAction.isFocusableInTouchMode = true
-            btnNotifAction.post {
-                btnNotifAction.requestFocus()
-            }
+        btnNotifAction.isFocusable = true
+        btnNotifAction.isFocusableInTouchMode = true
+        btnNotifAction.post {
+            btnNotifAction.requestFocus()
         }
     }
 
     private fun resetNotifDismissTimer() {
         notifDismissHandler.removeCallbacks(notifDismissRunnable)
-        if (!isPortraitOrientation()) {
-            if (currentMode == CenterMode.NOTIFICATION) {
-                if (!VoiceMessagePlayer.isPlaying() && textToSpeech?.isSpeaking != true) {
-                    notifDismissHandler.postDelayed(notifDismissRunnable, 20000L)
-                }
-            }
-        }
+        // Notificările rămân deschise în cercul central cât timp sunt prezente în bara de notificări
     }
 
     private fun dismissNotification() {
@@ -4132,29 +3846,9 @@ class MainActivity : AppCompatActivity() {
             resumeOtherPlayersAfterVoiceMessage()
         }
         centerCircle.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-
-        if (!isPortraitOrientation()) {
-            if (currentMode == CenterMode.NOTIFICATION) {
-                currentMode = preNotificationMode
-                updateCenterModeUI(animateFrom = CenterMode.NOTIFICATION)
-            }
-            return
-        }
-
-        activeNotification?.let { notif ->
-            try {
-                CarNotificationListenerService.instance?.cancelNotification(notif.key)
-            } catch (_: Exception) {}
-            CarNotificationHub.removeNotification(notif.key)
-        }
-        val remaining = CarNotificationHub.unreadNotifications
-        if (remaining.isNotEmpty()) {
-            displayNotification(remaining.first())
-        } else {
-            if (currentMode == CenterMode.NOTIFICATION) {
-                currentMode = CenterMode.BMW
-                updateCenterModeUI(animateFrom = CenterMode.NOTIFICATION)
-            }
+        if (currentMode == CenterMode.NOTIFICATION) {
+            currentMode = preNotificationMode
+            updateCenterModeUI(animateFrom = CenterMode.NOTIFICATION)
         }
     }
 
@@ -4192,13 +3886,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun resumeOtherPlayersAfterVoiceMessage() {
-        if (isPortraitOrientation() || determineTargetOrientation() == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
-            wasRadioPlayingBeforeVoice = false
-            wasYouTubePlayingBeforeVoice = false
-            wasExternalMediaPlayingBeforeVoice = false
-            stopAllAudioPlayers()
-            return
-        }
         if (wasRadioPlayingBeforeVoice) {
             wasRadioPlayingBeforeVoice = false
             controller?.play()
@@ -4372,73 +4059,78 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setNightMode(night: Boolean, showToast: Boolean = true) {
-        isNightMode = night
+    fun cycleBrightnessMode(showToast: Boolean = true) {
+        val nextMode = when (currentBrightnessMode) {
+            BrightnessMode.DAY -> BrightnessMode.NIGHT
+            BrightnessMode.NIGHT -> BrightnessMode.AUTO
+            BrightnessMode.AUTO -> BrightnessMode.DAY
+        }
+        setBrightnessMode(nextMode, showToast)
+    }
 
-        // 1. Schimba pictograma butonului intre noapte (luna) si zi (soare)
-        btnNightMode.setImageResource(if (night) R.drawable.ic_moon else R.drawable.ic_sun)
+    private fun setBrightnessMode(mode: BrightnessMode, showToast: Boolean = true) {
+        currentBrightnessMode = mode
+        isNightMode = (mode == BrightnessMode.NIGHT)
 
-        // 2. Controleaza luminozitatea display-ului: 10% pe Night, 90% pe Day
-        applyScreenBrightness(night)
+        when (mode) {
+            BrightnessMode.DAY -> btnNightMode.setImageResource(R.drawable.ic_sun)
+            BrightnessMode.NIGHT -> btnNightMode.setImageResource(R.drawable.ic_moon)
+            BrightnessMode.AUTO -> btnNightMode.setImageResource(R.drawable.ic_brightness_auto)
+        }
 
-        // 3. Controleaza stilul vectorial al hartii MapLibre 3D: Carto Dark Matter vs Positron
-        applyMapNightMode(night)
+        applyScreenBrightness(mode)
 
-        // 4. Salveaza starea pentru relansari viitoare
         getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
             .edit()
-            .putBoolean("night_mode", night)
+            .putString("brightness_mode", mode.name.lowercase(Locale.ROOT))
+            .putBoolean("night_mode", mode == BrightnessMode.NIGHT)
             .apply()
 
         if (showToast) {
             val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
-            val percent = if (night) {
-                prefs.getInt("night_brightness", 10).coerceIn(5, 100)
-            } else {
-                prefs.getInt("day_brightness", 90).coerceIn(5, 100)
+            val msg = when (mode) {
+                BrightnessMode.DAY -> {
+                    val p = prefs.getInt("day_brightness", 90).coerceIn(5, 100)
+                    "Mod Zi Activ • Luminozitate $p%"
+                }
+                BrightnessMode.NIGHT -> {
+                    val p = prefs.getInt("night_brightness", 10).coerceIn(5, 100)
+                    "Mod Nocturn Activ • Luminozitate $p%"
+                }
+                BrightnessMode.AUTO -> "Mod Automat Activ • Luminozitate Sistem Android"
             }
-            val msg = if (night) "Mod Nocturn Activ • Luminozitate $percent%" else "Mod Zi Activ • Luminozitate $percent%"
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun applyScreenBrightness(night: Boolean) {
-        val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
-        val dayPercent = prefs.getInt("day_brightness", 90).coerceIn(5, 100)
-        val nightPercent = prefs.getInt("night_brightness", 10).coerceIn(5, 100)
-        val percent = if (night) nightPercent else dayPercent
-
+    private fun applyScreenBrightness(mode: BrightnessMode = currentBrightnessMode) {
         val lp = window.attributes
-        lp.screenBrightness = (percent / 100f).coerceIn(0.05f, 1.0f)
+        when (mode) {
+            BrightnessMode.AUTO -> {
+                lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            }
+            BrightnessMode.NIGHT -> {
+                val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
+                val nightPercent = prefs.getInt("night_brightness", 10).coerceIn(5, 100)
+                lp.screenBrightness = (nightPercent / 100f).coerceIn(0.05f, 1.0f)
+            }
+            BrightnessMode.DAY -> {
+                val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
+                val dayPercent = prefs.getInt("day_brightness", 90).coerceIn(5, 100)
+                lp.screenBrightness = (dayPercent / 100f).coerceIn(0.05f, 1.0f)
+            }
+        }
         window.attributes = lp
     }
 
-    private fun applyMapNightMode(night: Boolean) {
-        val map = mapLibreMap ?: return
-
-        val styleUrl = if (night) {
-            "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
-        } else {
-            "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
-        }
-
-        map.setStyle(styleUrl) { style ->
-            enableLocationComponent(style)
-            val loc = lastKnownLocation ?: getBestLastKnownLocation()
-            if (loc != null) {
-                lastKnownLocation = loc
-                val speedKmh = if (loc.hasSpeed()) loc.speed * 3.6f else 0f
-                updateMapLibreCamera(loc, speedKmh, force = true)
-            } else {
-                val defaultPos = CameraPosition.Builder()
-                    .target(LatLng(45.0608, 25.2606))
-                    .zoom(16.5)
-                    .tilt(35.0)
-                    .build()
-                map.cameraPosition = defaultPos
-            }
-        }
+    private fun setNightMode(night: Boolean, showToast: Boolean = true) {
+        setBrightnessMode(if (night) BrightnessMode.NIGHT else BrightnessMode.DAY, showToast)
     }
+
+    private fun applyScreenBrightness(night: Boolean) {
+        applyScreenBrightness(if (night) BrightnessMode.NIGHT else BrightnessMode.DAY)
+    }
+
 
     private fun adjustVolume(direction: Int) {
         try {
@@ -4479,9 +4171,6 @@ class MainActivity : AppCompatActivity() {
         if (::musicOverlayContainer.isInitialized && musicOverlayContainer.visibility == View.VISIBLE) return musicOverlayContainer
         if (::appsOverlayContainer.isInitialized && appsOverlayContainer.visibility == View.VISIBLE) return appsOverlayContainer
         if (::settingsOverlayContainer.isInitialized && settingsOverlayContainer.visibility == View.VISIBLE) return settingsOverlayContainer
-        if (::viewCenterNotification.isInitialized && viewCenterNotification.visibility == View.VISIBLE && currentMode == CenterMode.NOTIFICATION) {
-            return viewCenterNotification
-        }
         return null
     }
 
@@ -4498,6 +4187,8 @@ class MainActivity : AppCompatActivity() {
         val views = mutableListOf<View>()
         when (overlay) {
             viewCenterNotification -> {
+                if (::btnNotifPrev.isInitialized && btnNotifPrev.visibility == View.VISIBLE) views.add(btnNotifPrev)
+                if (::btnNotifNext.isInitialized && btnNotifNext.visibility == View.VISIBLE) views.add(btnNotifNext)
                 if (::btnNotifAction.isInitialized && btnNotifAction.visibility == View.VISIBLE) views.add(btnNotifAction)
                 if (::btnNotifSpeak.isInitialized && btnNotifSpeak.visibility == View.VISIBLE) views.add(btnNotifSpeak)
                 if (::btnNotifClose.isInitialized && btnNotifClose.visibility == View.VISIBLE) views.add(btnNotifClose)
@@ -4546,7 +4237,6 @@ class MainActivity : AppCompatActivity() {
                 if (::seekNightBrightness.isInitialized && seekNightBrightness.visibility == View.VISIBLE) views.add(seekNightBrightness)
                 if (::btnOpenNotifSettings.isInitialized && btnOpenNotifSettings.visibility == View.VISIBLE) views.add(btnOpenNotifSettings)
                 if (::btnCarBtSelect.isInitialized && btnCarBtSelect.visibility == View.VISIBLE) views.add(btnCarBtSelect)
-                if (::btnToggleForceDisplayMode.isInitialized && btnToggleForceDisplayMode.visibility == View.VISIBLE) views.add(btnToggleForceDisplayMode)
             }
             callOverlayContainer -> {
                 val ringing = findViewById<View>(R.id.call_ringing_actions)
@@ -4642,31 +4332,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
-        if (ev != null) {
-            if (ev.action == MotionEvent.ACTION_DOWN) {
-                resetNotifDismissTimer()
-                isNotifSwipeHandled = false
-            }
-            if (currentMode == CenterMode.NOTIFICATION && ::centerCircle.isInitialized) {
-                val location = IntArray(2)
-                centerCircle.getLocationOnScreen(location)
-                val x = ev.rawX
-                val y = ev.rawY
-                if (x >= location[0] && x <= location[0] + centerCircle.width &&
-                    y >= location[1] && y <= location[1] + centerCircle.height) {
-                    notifGestureDetector?.onTouchEvent(ev)
-                    if (isNotifSwipeHandled) {
-                        val cancelEvent = MotionEvent.obtain(ev)
-                        cancelEvent.action = MotionEvent.ACTION_CANCEL
-                        super.dispatchTouchEvent(cancelEvent)
-                        cancelEvent.recycle()
-                        return true
-                    }
-                }
-            }
-            if (isPortraitOrientation()) {
-                portraitGestureDetector?.onTouchEvent(ev)
-            }
+        if (ev != null && ev.action == MotionEvent.ACTION_DOWN) {
+            resetNotifDismissTimer()
         }
         return super.dispatchTouchEvent(ev)
     }
@@ -4676,11 +4343,13 @@ class MainActivity : AppCompatActivity() {
             dismissAllOverlays()
             return
         }
-        if (currentMode == CenterMode.NOTIFICATION) {
-            currentMode = if (isPortraitOrientation()) CenterMode.BMW else preNotificationMode
-            updateCenterModeUI(animateFrom = CenterMode.NOTIFICATION)
+        if (currentMode != CenterMode.BMW) {
+            val prev = currentMode
+            currentMode = CenterMode.BMW
+            updateCenterModeUI(animateFrom = prev)
             return
         }
+        super.onBackPressed()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -4701,9 +4370,43 @@ class MainActivity : AppCompatActivity() {
             return true
         }
 
+        // Tasta TAB sau Săgeți Stânga/Dreapta pentru navigare notificări în cercul central
+        if (event.action == KeyEvent.ACTION_DOWN && currentMode == CenterMode.NOTIFICATION) {
+            val unreadList = CarNotificationHub.unreadNotifications
+            if (unreadList.isNotEmpty()) {
+                if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                    btnNotifPrev.isPressed = true
+                    btnNotifPrev.postDelayed({ btnNotifPrev.isPressed = false }, 180)
+                    navigateToPreviousNotification()
+                    return true
+                } else if (event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                    btnNotifNext.isPressed = true
+                    btnNotifNext.postDelayed({ btnNotifNext.isPressed = false }, 180)
+                    navigateToNextNotification()
+                    return true
+                }
+            }
+        }
+
         val activeOverlay = getActiveSecondaryOverlay()
 
         if (event.keyCode == KeyEvent.KEYCODE_TAB && event.action == KeyEvent.ACTION_DOWN) {
+            if (currentMode == CenterMode.NOTIFICATION) {
+                val unreadList = CarNotificationHub.unreadNotifications
+                if (unreadList.isNotEmpty()) {
+                    if (event.isShiftPressed) {
+                        btnNotifPrev.isPressed = true
+                        btnNotifPrev.postDelayed({ btnNotifPrev.isPressed = false }, 180)
+                        navigateToPreviousNotification()
+                    } else {
+                        btnNotifNext.isPressed = true
+                        btnNotifNext.postDelayed({ btnNotifNext.isPressed = false }, 180)
+                        navigateToNextNotification()
+                    }
+                    return true
+                }
+            }
+
             if (activeOverlay != null) {
                 return handleOverlayTabNavigation(activeOverlay, event.isShiftPressed)
             }
@@ -4778,9 +4481,6 @@ class MainActivity : AppCompatActivity() {
         }
         if (::settingsOverlayContainer.isInitialized && settingsOverlayContainer.visibility == View.VISIBLE) {
             settingsOverlayContainer.visibility = View.GONE
-        }
-        if (currentMode == CenterMode.NOTIFICATION) {
-            dismissNotification()
         }
     }
 
@@ -4928,11 +4628,15 @@ class MainActivity : AppCompatActivity() {
         btnCallHangup.requestFocus()
     }
 
-    private fun showFavoritesOverlay() {
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+    private fun showRecentCallsOverlay() {
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(
                 this,
-                arrayOf(android.Manifest.permission.READ_CONTACTS, android.Manifest.permission.CALL_PHONE),
+                arrayOf(
+                    android.Manifest.permission.READ_CALL_LOG,
+                    android.Manifest.permission.READ_CONTACTS,
+                    android.Manifest.permission.CALL_PHONE
+                ),
                 2001
             )
             return
@@ -4949,8 +4653,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val favorites = loadFavoriteContacts()
-        if (favorites.isEmpty()) {
+        val recentCalls = loadRecentCalls()
+        if (recentCalls.isEmpty()) {
             tvEmptyFavorites.visibility = View.VISIBLE
             listFavoriteContacts.visibility = View.GONE
         } else {
@@ -4958,8 +4662,8 @@ class MainActivity : AppCompatActivity() {
             listFavoriteContacts.visibility = View.VISIBLE
 
             listFavoriteContacts.adapter = object : BaseAdapter() {
-                override fun getCount(): Int = favorites.size
-                override fun getItem(position: Int): Any = favorites[position]
+                override fun getCount(): Int = recentCalls.size
+                override fun getItem(position: Int): Any = recentCalls[position]
                 override fun getItemId(position: Int): Long = position.toLong()
 
                 override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
@@ -4967,7 +4671,7 @@ class MainActivity : AppCompatActivity() {
                     view.isFocusable = true
                     view.isFocusableInTouchMode = false
                     view.enableInstantClickOnTouch()
-                    val contact = favorites[position]
+                    val call = recentCalls[position]
 
                     val photoFrame = view.findViewById<FrameLayout>(R.id.fav_contact_photo_frame)
                     photoFrame.outlineProvider = circleOutlineProvider
@@ -4980,15 +4684,24 @@ class MainActivity : AppCompatActivity() {
                     val nameView = view.findViewById<TextView>(R.id.fav_contact_name)
                     val phoneView = view.findViewById<TextView>(R.id.fav_contact_phone)
 
-                    nameView.text = contact.name
-                    phoneView.text = contact.number
+                    nameView.text = call.name
+                    phoneView.text = formatCallDetails(call)
 
-                    if (contact.photo != null) {
+                    val isMissed = (call.type == CallLog.Calls.MISSED_TYPE || call.type == CallLog.Calls.REJECTED_TYPE)
+                    if (isMissed) {
+                        nameView.setTextColor(Color.parseColor("#FF5252"))
+                        phoneView.setTextColor(Color.parseColor("#FF8A80"))
+                    } else {
+                        nameView.setTextColor(Color.WHITE)
+                        phoneView.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.bmw_amber))
+                    }
+
+                    if (call.photo != null) {
                         photoView.setPadding(0, 0, 0, 0)
                         try {
-                            photoView.setImageBitmap(getCircularBitmap(contact.photo))
+                            photoView.setImageBitmap(getCircularBitmap(call.photo))
                         } catch (_: Exception) {
-                            photoView.setImageBitmap(contact.photo)
+                            photoView.setImageBitmap(call.photo)
                         }
                         photoView.scaleType = ImageView.ScaleType.CENTER_CROP
                     } else {
@@ -4999,7 +4712,7 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     view.setOnClickListener {
-                        startCallToContact(contact)
+                        startCallToRecent(call)
                     }
 
                     return view
@@ -5013,24 +4726,118 @@ class MainActivity : AppCompatActivity() {
         btnCloseFavorites.enableInstantClickOnTouch()
     }
 
-    private fun startCallToContact(contact: FavoriteContact) {
+    private fun showFavoritesOverlay() {
+        showRecentCallsOverlay()
+    }
+
+    private fun formatCallDetails(call: RecentCall): String {
+        val calCall = Calendar.getInstance().apply { timeInMillis = call.date }
+        val calNow = Calendar.getInstance()
+
+        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val timeStr = timeFormat.format(Date(call.date))
+
+        val dateStr = when {
+            calCall.get(Calendar.YEAR) == calNow.get(Calendar.YEAR) &&
+            calCall.get(Calendar.DAY_OF_YEAR) == calNow.get(Calendar.DAY_OF_YEAR) -> "Azi $timeStr"
+
+            calCall.get(Calendar.YEAR) == calNow.get(Calendar.YEAR) &&
+            calCall.get(Calendar.DAY_OF_YEAR) == calNow.get(Calendar.DAY_OF_YEAR) - 1 -> "Ieri $timeStr"
+
+            else -> {
+                val fullFormat = SimpleDateFormat("d MMM HH:mm", Locale.getDefault())
+                fullFormat.format(Date(call.date))
+            }
+        }
+
+        val typeStr = when (call.type) {
+            CallLog.Calls.INCOMING_TYPE -> "↙ Primit"
+            CallLog.Calls.OUTGOING_TYPE -> "↗ Inițiat"
+            CallLog.Calls.MISSED_TYPE -> "✕ Pierdut"
+            CallLog.Calls.REJECTED_TYPE -> "✕ Respins"
+            else -> "• Apel"
+        }
+
+        return "$typeStr  •  $dateStr  •  ${call.number}"
+    }
+
+    private fun loadRecentCalls(): List<RecentCall> {
+        val callsList = mutableListOf<RecentCall>()
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
+            return callsList
+        }
+
+        val projection = arrayOf(
+            CallLog.Calls.NUMBER,
+            CallLog.Calls.CACHED_NAME,
+            CallLog.Calls.TYPE,
+            CallLog.Calls.DATE
+        )
+
+        try {
+            val cursor = contentResolver.query(
+                CallLog.Calls.CONTENT_URI,
+                projection,
+                null,
+                null,
+                "${CallLog.Calls.DATE} DESC"
+            )
+
+            val infoCache = mutableMapOf<String, Pair<String?, Bitmap?>>()
+
+            cursor?.use { c ->
+                val numIdx = c.getColumnIndex(CallLog.Calls.NUMBER)
+                val nameIdx = c.getColumnIndex(CallLog.Calls.CACHED_NAME)
+                val typeIdx = c.getColumnIndex(CallLog.Calls.TYPE)
+                val dateIdx = c.getColumnIndex(CallLog.Calls.DATE)
+
+                while (c.moveToNext() && callsList.size < 50) {
+                    val rawNum = if (numIdx != -1) c.getString(numIdx) ?: "" else ""
+                    if (rawNum.isEmpty()) continue
+
+                    var cachedName = if (nameIdx != -1) c.getString(nameIdx) else null
+                    val type = if (typeIdx != -1) c.getInt(typeIdx) else CallLog.Calls.INCOMING_TYPE
+                    val date = if (dateIdx != -1) c.getLong(dateIdx) else 0L
+
+                    val cleanNum = rawNum.replace("\\s+".toRegex(), "")
+                    val contactInfo = infoCache.getOrPut(cleanNum) {
+                        getContactInfo(this, cleanNum)
+                    }
+
+                    val finalName = when {
+                        !cachedName.isNullOrBlank() -> cachedName
+                        !contactInfo.first.isNullOrBlank() -> contactInfo.first!!
+                        else -> rawNum
+                    }
+
+                    callsList.add(RecentCall(finalName, rawNum, type, date, contactInfo.second))
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        return callsList
+    }
+
+    private fun startCallToRecent(call: RecentCall) {
         favoritesOverlayContainer.visibility = View.GONE
-        showOutgoingCallUI(contact.number, contact.name, contact.photo)
+        showOutgoingCallUI(call.number, call.name, call.photo)
 
         try {
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
                 val telecomManager = getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
                 if (telecomManager != null) {
-                    val uri = Uri.fromParts("tel", contact.number, null)
+                    val uri = Uri.fromParts("tel", call.number, null)
                     telecomManager.placeCall(uri, Bundle())
                 } else {
-                    val callIntent = Intent(Intent.ACTION_CALL, Uri.parse("tel:${Uri.encode(contact.number)}")).apply {
+                    val callIntent = Intent(Intent.ACTION_CALL, Uri.parse("tel:${Uri.encode(call.number)}")).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK
                     }
                     startActivity(callIntent)
                 }
             } else {
-                val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${Uri.encode(contact.number)}")).apply {
+                val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${Uri.encode(call.number)}")).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
                 startActivity(dialIntent)

@@ -3,4 +3,6 @@
     <string name="app_name">BMW Car Launcher</string>
     <string name="accessibility_service_description">Permite blocarea automată a ecranului la trecerea în modul Portret și revenirea instantanee la BMW Car Launcher prin tastatura Bluetooth sau iDrive.</string>
     <string name="accessibility_service_desc">Permite interceptarea tastei F12 de pe tastatura Bluetooth pentru a reveni instantaneu la BMW Car Launcher din orice aplicație.</string>
+    <string name="widget_name">BMW Cerc Central</string>
+    <string name="widget_description">Cadranul central BMW cu control media, radio și logo BMW.</string>
 </resources>

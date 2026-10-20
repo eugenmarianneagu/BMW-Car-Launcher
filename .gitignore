@@ -1,5 +1,6 @@
 # Built application files
 *.apk
+!BMW-Car-Launcher.apk
 *.aar
 *.ap_
 *.aab

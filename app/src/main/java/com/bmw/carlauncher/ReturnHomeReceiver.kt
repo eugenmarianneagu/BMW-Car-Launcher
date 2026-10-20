@@ -7,7 +7,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.os.PowerManager
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 
 class ReturnHomeReceiver : BroadcastReceiver() {
@@ -27,6 +29,9 @@ class ReturnHomeReceiver : BroadcastReceiver() {
                 intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1) == BluetoothProfile.STATE_CONNECTED)
         val isAclConnect = (action == BluetoothDevice.ACTION_ACL_CONNECTED)
 
+        // ==============================================================
+        // 1. CONECTARE BLUETOOTH LA DISPOZITIVUL SELECTAT
+        // ==============================================================
         if (isAclConnect || isA2dpConnect) {
             val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
@@ -35,12 +40,12 @@ class ReturnHomeReceiver : BroadcastReceiver() {
                 intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
             }
             val devName = try { device?.name } catch (_: SecurityException) { null } ?: ""
-            Log.i(TAG, "Bluetooth device connected ($action): '$devName', address=${device?.address}")
+            val devAddress = device?.address ?: ""
+            Log.i(TAG, "Bluetooth device connected ($action): '$devName', address=$devAddress")
 
-            // Filtru: daca exista dispozitiv selectat in setari, verifica adresa MAC; altfel verifica BMW/iDrive/ESP32
             val savedCarBt = prefs.getString("car_bt_address", null)
             val isTargetDevice = if (!savedCarBt.isNullOrEmpty()) {
-                device?.address.equals(savedCarBt, ignoreCase = true)
+                devAddress.equals(savedCarBt, ignoreCase = true)
             } else {
                 devName.contains("BMW", ignoreCase = true) ||
                 devName.contains("iDrive", ignoreCase = true) ||
@@ -48,18 +53,15 @@ class ReturnHomeReceiver : BroadcastReceiver() {
             }
 
             if (!isTargetDevice) {
-                Log.d(TAG, "Dispozitiv Bluetooth ignorat (nu este mașina selectată): '$devName', adresa=${device?.address}")
+                Log.d(TAG, "Dispozitiv ignorat (nu corespunde MAC-ului mașinii): '$devName', adresa=$devAddress")
                 return
             }
 
-            Log.i(TAG, "Dispozitiv mașină detectat ('$devName')! Pornire radio în fundal (fără aprindere ecran)...")
+            Log.i(TAG, "Dispozitiv mașină detectat ($devAddress)! Pornire muzică și aducere în prim-plan...")
             MainActivity.lastDisconnectTimestamp = 0L
             MainActivity.isCarConnectedState = true
 
-            // Asigură că force_display_mode este resetat pe auto pentru a permite comutarea automată
-            prefs.edit().putString("force_display_mode", "auto").apply()
-
-            // 1. Pornește redarea radio imediat în fundal (ecranul rămâne stins/blocat)
+            // A. Pornește redarea radio / muzică
             try {
                 val radioIntent = Intent(context, RadioService::class.java).apply {
                     this.action = RadioService.ACTION_START_PLAY
@@ -73,16 +75,21 @@ class ReturnHomeReceiver : BroadcastReceiver() {
                 Log.e(TAG, "Eroare la pornirea RadioService: ${e.message}")
             }
 
-            // 2. Notifică instanța activă pentru actualizare orientare bord dacă rulează deja
+            // B. Notifică instanța dacă e deja activă
             MainActivity.instance?.let { act ->
                 act.runOnUiThread {
-                    act.checkBluetoothConnectionAndUpdateOrientation()
                     act.startRadioPlayback()
                 }
             }
+
+            // C. Aduce aplicația în prim-plan
+            BMWAccessibilityService.bringToForeground(context)
             return
         }
 
+        // ==============================================================
+        // 2. DECONECTARE BLUETOOTH DE LA DISPOZITIVUL SELECTAT
+        // ==============================================================
         val isAclDisconnect = (action == BluetoothDevice.ACTION_ACL_DISCONNECTED)
         val isBtOff = (action == android.bluetooth.BluetoothAdapter.ACTION_STATE_CHANGED &&
                 (intent.getIntExtra(android.bluetooth.BluetoothAdapter.EXTRA_STATE, -1) == android.bluetooth.BluetoothAdapter.STATE_OFF ||
@@ -96,13 +103,14 @@ class ReturnHomeReceiver : BroadcastReceiver() {
                 intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
             }
             val devName = try { device?.name } catch (_: SecurityException) { null } ?: ""
-            Log.i(TAG, "Bluetooth device disconnected ($action): '$devName', address=${device?.address}")
+            val devAddress = device?.address ?: ""
+            Log.i(TAG, "Bluetooth device disconnected ($action): '$devName', address=$devAddress")
 
             val savedCarBt = prefs.getString("car_bt_address", null)
             val isTargetDevice = if (isBtOff) {
                 true
             } else if (!savedCarBt.isNullOrEmpty()) {
-                device?.address?.equals(savedCarBt, ignoreCase = true) == true
+                devAddress.equals(savedCarBt, ignoreCase = true)
             } else {
                 devName.contains("BMW", ignoreCase = true) ||
                 devName.contains("iDrive", ignoreCase = true) ||
@@ -110,37 +118,57 @@ class ReturnHomeReceiver : BroadcastReceiver() {
             }
 
             if (!isTargetDevice) {
-                Log.d(TAG, "Dispozitiv Bluetooth deconectat ignorat: '$devName', adresa=${device?.address}")
+                Log.d(TAG, "Dispozitiv deconectat ignorat: '$devName', adresa=$devAddress")
                 return
             }
 
-            Log.i(TAG, "Dispozitiv țintă deconectat ('$devName')! Trecere în mod Portret și blocare ecran...")
+            val pendingResult = goAsync()
+            Log.i(TAG, "Dispozitiv țintă deconectat ($devAddress)! Oprire muzică, revenire pe Home și blocare telefon...")
             MainActivity.isCarConnectedState = false
-            MainActivity.lastDisconnectTimestamp = android.os.SystemClock.elapsedRealtime()
+            MainActivity.lastDisconnectTimestamp = SystemClock.elapsedRealtime()
 
-            // Asigură că force_display_mode este resetat pe auto
-            prefs.edit().putString("force_display_mode", "auto").apply()
-
-            // Oprește radioul la deconectare
+            // A. Oprește radioul / muzica la deconectare
             try {
                 context.sendBroadcast(Intent(RadioService.ACTION_STOP_RADIO).setPackage(context.packageName))
             } catch (_: Exception) {}
 
-            // Notifică instanța activă pentru actualizare la portret
             MainActivity.instance?.let { act ->
                 act.runOnUiThread {
-                    act.checkBluetoothConnectionAndUpdateOrientation()
-                    act.lockScreenIfPossible()
+                    act.stopAllAudioPlayers()
+                    try {
+                        act.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    } catch (_: Exception) {}
                 }
             }
 
-            // Blochează ecranul imediat prin serviciul de accesibilitate
-            try {
-                val locked = BMWAccessibilityService.lockScreen()
-                Log.i(TAG, "BMWAccessibilityService.lockScreen() apelat din ReturnHomeReceiver: $locked")
-            } catch (e: Exception) {
-                Log.e(TAG, "Eroare lockScreen in ReturnHomeReceiver: ${e.message}")
+            // B. Revine la ecranul de Home al telefonului
+            val homeSuccess = BMWAccessibilityService.goToHomeScreen()
+            if (!homeSuccess) {
+                try {
+                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                        addCategory(Intent.CATEGORY_HOME)
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(homeIntent)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Eroare lansare Home Intent", e)
+                }
             }
+
+            // C. Blochează ecranul telefonului după tranziția la Home
+            Handler(Looper.getMainLooper()).postDelayed({
+                try {
+                    val locked = BMWAccessibilityService.lockScreen()
+                    Log.i(TAG, "BMWAccessibilityService.lockScreen() apelat: $locked")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Eroare lockScreen in ReturnHomeReceiver: ${e.message}")
+                } finally {
+                    try {
+                        pendingResult.finish()
+                    } catch (_: Exception) {}
+                }
+            }, 450L)
+
             return
         }
 
@@ -148,40 +176,10 @@ class ReturnHomeReceiver : BroadcastReceiver() {
     }
 
     private fun launchMainActivity(context: Context) {
-        try {
-            val launchIntent = Intent(context, MainActivity::class.java).apply {
-                this.action = Intent.ACTION_MAIN
-                addCategory(Intent.CATEGORY_LAUNCHER)
-                putExtra("EXTRA_CAR_BT_CONNECTED", true)
-                putExtra("EXTRA_F12_RETURN", true)
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                    Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP
-                )
-            }
-
-            // Dacă AccessibilityService este activ, folosește contextul său privilegiat pentru pornire din ecran blocat
-            BMWAccessibilityService.instance?.let { a11y ->
-                try {
-                    a11y.startActivity(launchIntent)
-                    Log.i(TAG, "MainActivity lansată via BMWAccessibilityService")
-                    return
-                } catch (e: Exception) {
-                    Log.w(TAG, "Lansare via AccessibilityService a eșuat, fallback pe context", e)
-                }
-            }
-
-            context.startActivity(launchIntent)
-            Log.i(TAG, "MainActivity lansata cu succes din ReturnHomeReceiver")
-        } catch (e: Exception) {
-            Log.e(TAG, "Eroare la lansarea MainActivity din ReturnHomeReceiver", e)
-        }
+        BMWAccessibilityService.bringToForeground(context)
     }
 
     companion object {
-        private const val TAG = "BMWAccessibility"
+        private const val TAG = "ReturnHomeReceiver"
     }
 }
-

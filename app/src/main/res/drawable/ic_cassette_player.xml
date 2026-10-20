@@ -1,0 +1,221 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="80dp"
+    android:viewportWidth="100"
+    android:viewportHeight="84">
+
+    <!-- Car Cassette Deck Outer Body / Frame -->
+    <path
+        android:fillColor="#1C1C1E"
+        android:strokeColor="#3A3A3C"
+        android:strokeWidth="1.8"
+        android:pathData="M 10,12
+                          C 10,8 14,5 18,5
+                          L 82,5
+                          C 86,5 90,8 90,12
+                          L 90,72
+                          C 90,76 86,79 82,79
+                          L 18,79
+                          C 14,79 10,76 10,72
+                          Z" />
+
+    <!-- Top Metallic Accent Line (BMW Amber Glow) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF7200"
+        android:strokeWidth="1.5"
+        android:strokeAlpha="0.85"
+        android:pathData="M 16,9 L 84,9" />
+
+    <!-- Cassette Slot Well / Inner Pocket (Dark Inset) -->
+    <path
+        android:fillColor="#0D0D0E"
+        android:strokeColor="#2C2C2E"
+        android:strokeWidth="1.2"
+        android:pathData="M 15,14
+                          C 15,12 17,11 19,11
+                          L 81,11
+                          C 83,11 85,12 85,14
+                          L 85,59
+                          C 85,61 83,62 81,62
+                          L 19,62
+                          C 17,62 15,61 15,59
+                          Z" />
+
+    <!-- Compact Cassette Shell Body -->
+    <path
+        android:fillColor="#222224"
+        android:strokeColor="#FF7200"
+        android:strokeWidth="1.4"
+        android:pathData="M 21,17
+                          C 21,16 22,15 23,15
+                          L 77,15
+                          C 78,15 79,16 79,17
+                          L 79,53
+                          C 79,54 78,55 77,55
+                          L 23,55
+                          C 22,55 21,54 21,53
+                          Z" />
+
+    <!-- Cassette Corner Screws -->
+    <path
+        android:fillColor="#555558"
+        android:pathData="M 24,18 A 1,1 0 1,0 24,20 A 1,1 0 1,0 24,18 Z
+                          M 76,18 A 1,1 0 1,0 76,20 A 1,1 0 1,0 76,18 Z
+                          M 24,50 A 1,1 0 1,0 24,52 A 1,1 0 1,0 24,50 Z
+                          M 76,50 A 1,1 0 1,0 76,52 A 1,1 0 1,0 76,50 Z" />
+
+    <!-- Cassette Label Area (BMW Amber subtle tint) -->
+    <path
+        android:fillColor="#2A1E14"
+        android:strokeColor="#55FF7200"
+        android:strokeWidth="0.8"
+        android:pathData="M 26,19 L 74,19 L 74,48 L 26,48 Z" />
+
+    <!-- Label Stripe -->
+    <path
+        android:fillColor="#FF7200"
+        android:fillAlpha="0.75"
+        android:pathData="M 26,20 L 74,20 L 74,23 L 26,23 Z" />
+
+    <!-- Cassette Transparent Central Window -->
+    <path
+        android:fillColor="#111113"
+        android:strokeColor="#44FFFFFF"
+        android:strokeWidth="0.9"
+        android:pathData="M 32,27
+                          C 32,26 33,25 34,25
+                          L 66,25
+                          C 67,25 68,26 68,27
+                          L 68,43
+                          C 68,44 67,45 66,45
+                          L 34,45
+                          C 33,45 32,44 32,43
+                          Z" />
+
+    <!-- Left Spool Reel (Outer Rim) -->
+    <path
+        android:fillColor="#3A3A3E"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="0.8"
+        android:pathData="M 42,35 m -6.5,0 a 6.5,6.5 0 1,0 13,0 a 6.5,6.5 0 1,0 -13,0" />
+
+    <!-- Left Spool Center Hole -->
+    <path
+        android:fillColor="#111113"
+        android:pathData="M 42,35 m -2.5,0 a 2.5,2.5 0 1,0 5,0 a 2.5,2.5 0 1,0 -5,0" />
+
+    <!-- Left Spool Gear Teeth -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 41.3,31 L 42.7,31 L 42.7,33 L 41.3,33 Z
+                          M 41.3,37 L 42.7,37 L 42.7,39 L 41.3,39 Z
+                          M 38,34.3 L 38,35.7 L 40,35.7 L 40,34.3 Z
+                          M 44,34.3 L 44,35.7 L 46,35.7 L 46,34.3 Z" />
+
+    <!-- Right Spool Reel (Outer Rim) -->
+    <path
+        android:fillColor="#3A3A3E"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="0.8"
+        android:pathData="M 58,35 m -6.5,0 a 6.5,6.5 0 1,0 13,0 a 6.5,6.5 0 1,0 -13,0" />
+
+    <!-- Right Spool Center Hole -->
+    <path
+        android:fillColor="#111113"
+        android:pathData="M 58,35 m -2.5,0 a 2.5,2.5 0 1,0 5,0 a 2.5,2.5 0 1,0 -5,0" />
+
+    <!-- Right Spool Gear Teeth -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 57.3,31 L 58.7,31 L 58.7,33 L 57.3,33 Z
+                          M 57.3,37 L 58.7,37 L 58.7,39 L 57.3,39 Z
+                          M 54,34.3 L 54,35.7 L 56,35.7 L 56,34.3 Z
+                          M 60,34.3 L 60,35.7 L 62,35.7 L 62,34.3 Z" />
+
+    <!-- Tape Strip Between Reels -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#5A422D"
+        android:strokeWidth="1.2"
+        android:pathData="M 45,41 L 55,41" />
+
+    <!-- Cassette Bottom Head Guide (Trapezoid) -->
+    <path
+        android:fillColor="#19191B"
+        android:strokeColor="#38383B"
+        android:strokeWidth="0.8"
+        android:pathData="M 33,48 L 67,48 L 63,55 L 37,55 Z" />
+
+    <path
+        android:fillColor="#44FFFFFF"
+        android:pathData="M 40,51 m -1.2,0 a 1.2,1.2 0 1,0 2.4,0 a 1.2,1.2 0 1,0 -2.4,0
+                          M 50,51 m -1.5,0 a 1.5,1.5 0 1,0 3,0 a 1.5,1.5 0 1,0 -3,0
+                          M 60,51 m -1.2,0 a 1.2,1.2 0 1,0 2.4,0 a 1.2,1.2 0 1,0 -2.4,0" />
+
+    <!-- Cassette Player Deck Controls / Lower Panel -->
+    <path
+        android:fillColor="#151517"
+        android:strokeColor="#2E2E32"
+        android:strokeWidth="0.8"
+        android:pathData="M 16,65 L 84,65 L 84,74 L 16,74 Z" />
+
+    <!-- Deck Buttons: Eject, Rewind, Play, FastForward, Stop -->
+    <!-- Eject Button -->
+    <path
+        android:fillColor="#242428"
+        android:strokeColor="#3C3C40"
+        android:strokeWidth="0.6"
+        android:pathData="M 19,67 L 29,67 L 29,72 L 19,72 Z" />
+    <path
+        android:fillColor="#8E8E93"
+        android:pathData="M 24,68.5 L 22,70.5 L 26,70.5 Z" />
+
+    <!-- Rewind Button -->
+    <path
+        android:fillColor="#242428"
+        android:strokeColor="#3C3C40"
+        android:strokeWidth="0.6"
+        android:pathData="M 32,67 L 42,67 L 42,72 L 32,72 Z" />
+    <path
+        android:fillColor="#8E8E93"
+        android:pathData="M 36,69.5 L 38.5,68 L 38.5,71 Z
+                          M 39,69.5 L 41.5,68 L 41.5,71 Z" />
+
+    <!-- Play Button (Amber Highlighted) -->
+    <path
+        android:fillColor="#2A1E14"
+        android:strokeColor="#FF7200"
+        android:strokeWidth="0.7"
+        android:pathData="M 45,67 L 55,67 L 55,72 L 45,72 Z" />
+    <path
+        android:fillColor="#FF7200"
+        android:pathData="M 48.5,68 L 52.5,69.5 L 48.5,71 Z" />
+
+    <!-- FastForward Button -->
+    <path
+        android:fillColor="#242428"
+        android:strokeColor="#3C3C40"
+        android:strokeWidth="0.6"
+        android:pathData="M 58,67 L 68,67 L 68,72 L 58,72 Z" />
+    <path
+        android:fillColor="#8E8E93"
+        android:pathData="M 64.5,69.5 L 62,68 L 62,71 Z
+                          M 61.5,69.5 L 59,68 L 59,71 Z" />
+
+    <!-- Stop Button -->
+    <path
+        android:fillColor="#242428"
+        android:strokeColor="#3C3C40"
+        android:strokeWidth="0.6"
+        android:pathData="M 71,67 L 81,67 L 81,72 L 71,72 Z" />
+    <path
+        android:fillColor="#8E8E93"
+        android:pathData="M 74.5,68.5 L 77.5,68.5 L 77.5,71.5 L 74.5,71.5 Z" />
+
+    <!-- LED Status Dot (Amber) -->
+    <path
+        android:fillColor="#FF7200"
+        android:pathData="M 85,9.5 m -1.2,0 a 1.2,1.2 0 1,0 2.4,0 a 1.2,1.2 0 1,0 -2.4,0" />
+
+</vector>

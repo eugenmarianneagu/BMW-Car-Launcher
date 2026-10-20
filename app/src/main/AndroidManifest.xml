@@ -35,7 +35,6 @@
         <package android:name="app.revanced.android.apps.youtube.music" />
         <package android:name="com.vanced.android.youtube" />
         <package android:name="com.vanced.android.apps.youtube.music" />
-        <package android:name="com.waze" />
         <package android:name="com.google.android.apps.maps" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
@@ -56,8 +55,8 @@
             android:name=".MainActivity"
             android:label="BMW Car Launcher"
             android:launchMode="singleTask"
-            android:screenOrientation="unspecified"
-            android:configChanges="keyboardHidden|keyboard"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="keyboardHidden|keyboard|orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -100,7 +99,7 @@
 
         <service
             android:name=".WazeNotificationService"
-            android:label="BMW Waze Listener"
+            android:label="BMW Google Maps Listener"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
             android:exported="true">
             <intent-filter>
@@ -147,7 +146,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- BMW Accessibility Service for Global F12 Key Interception -->
+        <!-- BMW Accessibility Service for Global F12 Key Interception & Navigation Control -->
         <service
             android:name=".BMWAccessibilityService"
             android:label="BMW Launcher Key Interceptor"
@@ -185,5 +184,22 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+        <!-- Widget Cadran Central BMW -->
+        <receiver
+            android:name=".BmwCenterWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.bmw.carlauncher.WIDGET_PLAY_PAUSE" />
+                <action android:name="com.bmw.carlauncher.WIDGET_PREV" />
+                <action android:name="com.bmw.carlauncher.WIDGET_NEXT" />
+                <action android:name="com.bmw.carlauncher.WIDGET_OPEN_APP" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/bmw_center_widget_info" />
+        </receiver>
+
     </application>
 </manifest>
