@@ -394,6 +394,10 @@ class MainActivity : AppCompatActivity() {
         Log.i("MainActivity", "handleCarDisconnected ($reason): oprire audio, blocare ecran și background")
         isCarConnectedState = false
         lastDisconnectTimestamp = now
+        try {
+            val prefs = getSharedPreferences("agama_settings", Context.MODE_PRIVATE)
+            prefs.edit().putLong("last_disconnect_elapsed_time", now).apply()
+        } catch (_: Exception) {}
         ExternalMediaManager.cancelAutoReturn()
         stopAllAudioPlayers()
 
@@ -447,7 +451,9 @@ class MainActivity : AppCompatActivity() {
             }
 
             val now = android.os.SystemClock.elapsedRealtime()
-            val isInDisconnectCooldown = (lastDisconnectTimestamp > 0L && now - lastDisconnectTimestamp < 8000L)
+            val prefsDisconnect = prefs.getLong("last_disconnect_elapsed_time", 0L)
+            val effectiveDisconnect = maxOf(lastDisconnectTimestamp, prefsDisconnect)
+            val isInDisconnectCooldown = (effectiveDisconnect > 0L && now - effectiveDisconnect < 15000L)
 
             when (action) {
                 BluetoothDevice.ACTION_ACL_DISCONNECTED -> {

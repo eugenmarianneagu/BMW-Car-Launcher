@@ -57,8 +57,21 @@ class ReturnHomeReceiver : BroadcastReceiver() {
                 return
             }
 
+            val now = SystemClock.elapsedRealtime()
+            val lastDisconnect = MainActivity.lastDisconnectTimestamp
+            val prefsDisconnect = prefs.getLong("last_disconnect_elapsed_time", 0L)
+            val effectiveDisconnect = maxOf(lastDisconnect, prefsDisconnect)
+            val cooldownMs = 15000L // 15 secunde cooldown impotriva repornirilor din condensatorii convertorului DC-DC
+
+            if (effectiveDisconnect > 0L && now - effectiveDisconnect < cooldownMs) {
+                val secLeft = (cooldownMs - (now - effectiveDisconnect)) / 1000L
+                Log.w(TAG, "Conectare ignorata (in cooldown de deconectare, $secLeft secunde ramase): '$devName', adresa=$devAddress")
+                return
+            }
+
             Log.i(TAG, "Dispozitiv mașină detectat ($devAddress)! Pornire muzică și aducere în prim-plan...")
             MainActivity.lastDisconnectTimestamp = 0L
+            prefs.edit().remove("last_disconnect_elapsed_time").apply()
             MainActivity.isCarConnectedState = true
 
             // A. Pornește redarea radio / muzică
@@ -125,7 +138,9 @@ class ReturnHomeReceiver : BroadcastReceiver() {
             val pendingResult = goAsync()
             Log.i(TAG, "Dispozitiv țintă deconectat ($devAddress)! Oprire muzică, revenire pe Home și blocare telefon...")
             MainActivity.isCarConnectedState = false
-            MainActivity.lastDisconnectTimestamp = SystemClock.elapsedRealtime()
+            val disconnectTime = SystemClock.elapsedRealtime()
+            MainActivity.lastDisconnectTimestamp = disconnectTime
+            prefs.edit().putLong("last_disconnect_elapsed_time", disconnectTime).apply()
 
             // A. Oprește radioul / muzica la deconectare
             try {
