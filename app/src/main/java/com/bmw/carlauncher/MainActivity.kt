@@ -3377,8 +3377,9 @@ class MainActivity : AppCompatActivity() {
         if (artBytes != null) {
             val bmp = BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size)
             if (bmp != null) {
-                centerRadioArt.setPadding(0, 0, 0, 0)
-                centerRadioArt.scaleType = ImageView.ScaleType.CENTER_CROP
+                val pad = (38 * resources.displayMetrics.density).toInt()
+                centerRadioArt.setPadding(pad, pad, pad, pad)
+                centerRadioArt.scaleType = ImageView.ScaleType.FIT_CENTER
                 centerRadioArt.setImageBitmap(bmp)
             }
         } else {

@@ -341,24 +341,70 @@ class RadioService : MediaSessionService() {
             fetchOrGenerateLogo(lastIndex, stations[lastIndex])
         }
         player.playWhenReady = autoPlay
+
+        // Pre-încarcă asincron în fundal siglele pentru toate celelalte posturi din listă
+        stations.forEachIndexed { i, st ->
+            if (i != lastIndex && st.logoUrl.isNotBlank() && !artworkCache.containsKey(i)) {
+                fetchOrGenerateLogo(i, st)
+            }
+        }
         player.prepare()
+    }
+
+    private fun downloadBitmapFromUrl(urlString: String): Bitmap? {
+        var currentUrl = urlString
+        for (redirect in 0..3) {
+            val url = URL(currentUrl)
+            val conn = url.openConnection() as HttpURLConnection
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10; Mobile)")
+            conn.connectTimeout = 5000
+            conn.readTimeout = 5000
+            conn.instanceFollowRedirects = true
+            val responseCode = conn.responseCode
+            if (responseCode == HttpURLConnection.HTTP_MOVED_PERM ||
+                responseCode == HttpURLConnection.HTTP_MOVED_TEMP ||
+                responseCode == 307 || responseCode == 308) {
+                val loc = conn.getHeaderField("Location")
+                if (!loc.isNullOrBlank()) {
+                    currentUrl = if (loc.startsWith("http")) loc else URL(url, loc).toString()
+                    continue
+                }
+            }
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                conn.inputStream.use { stream ->
+                    val bytes = stream.readBytes()
+                    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                }
+            }
+            break
+        }
+        return null
     }
 
     private fun fetchOrGenerateLogo(index: Int, station: RadioStation) {
         if (station.logoUrl.isBlank()) return
         thread {
             try {
-                val url = URL(station.logoUrl)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 4000
-                conn.readTimeout = 4000
-                conn.doInput = true
-                conn.connect()
-                val bmp = BitmapFactory.decodeStream(conn.inputStream)
-                if (bmp != null && bmp.width > 32) {
+                val bmp = downloadBitmapFromUrl(station.logoUrl)
+                if (bmp != null && bmp.width > 0 && bmp.height > 0) {
+                    val maxDim = 600
+                    val scaledBmp = if (bmp.width > maxDim || bmp.height > maxDim) {
+                        val ratio = bmp.width.toFloat() / bmp.height.toFloat()
+                        val (newW, newH) = if (ratio > 1f) {
+                            Pair(maxDim, (maxDim / ratio).toInt().coerceAtLeast(1))
+                        } else {
+                            Pair((maxDim * ratio).toInt().coerceAtLeast(1), maxDim)
+                        }
+                        Bitmap.createScaledBitmap(bmp, newW, newH, true)
+                    } else {
+                        bmp
+                    }
                     val stream = ByteArrayOutputStream()
-                    bmp.compress(Bitmap.CompressFormat.PNG, 90, stream)
+                    scaledBmp.compress(Bitmap.CompressFormat.PNG, 90, stream)
                     val bytes = stream.toByteArray()
+                    if (scaledBmp != bmp) scaledBmp.recycle()
+                    bmp.recycle()
+
                     artworkCache[index] = bytes
                     mainExecutor.execute {
                         if (index < player.mediaItemCount) {
@@ -385,7 +431,10 @@ class RadioService : MediaSessionService() {
 
         val colors = listOf("#D32F2F", "#1976D2", "#388E3C", "#F57C00", "#7B1FA2", "#00796B")
         val colorHex = colors[Math.abs(name.hashCode()) % colors.size]
-        canvas.drawColor(Color.parseColor(colorHex))
+        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor(colorHex)
+        }
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, bgPaint)
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE

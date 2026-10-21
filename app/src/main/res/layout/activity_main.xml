@@ -730,7 +730,7 @@
                         android:id="@+id/center_radio_art"
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
-                        android:padding="42dp"
+                        android:padding="38dp"
                         android:src="@drawable/ic_gauge_radio"
                         android:scaleType="fitCenter" />
 
