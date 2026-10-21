@@ -3360,7 +3360,13 @@ class MainActivity : AppCompatActivity() {
             startRadioPlayback()
         }
         if (intent.getBooleanExtra("EXTRA_F12_RETURN", false)) {
+            Log.i("MainActivity", "onNewIntent: EXTRA_F12_RETURN primit! Revenire la ecranul principal BMW...")
             dismissAllOverlays()
+            if (currentMode != CenterMode.BMW) {
+                val prev = currentMode
+                currentMode = CenterMode.BMW
+                updateCenterModeUI(animateFrom = prev)
+            }
         }
         if (intent.getBooleanExtra("FROM_YT_MUSIC_AUTO_RETURN", false)) {
             currentMode = CenterMode.MEDIA

@@ -47,11 +47,12 @@ class BMWAccessibilityService : AccessibilityService() {
     }
 
     fun returnToLauncher() {
+        Log.i(TAG, "returnToLauncher() called, bringing MainActivity to foreground...")
         try {
             val intent = Intent(this, MainActivity::class.java).apply {
                 action = Intent.ACTION_MAIN
                 addCategory(Intent.CATEGORY_LAUNCHER)
-                putExtra("EXTRA_CAR_BT_CONNECTED", true)
+                putExtra("EXTRA_F12_RETURN", true)
                 addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
@@ -65,8 +66,8 @@ class BMWAccessibilityService : AccessibilityService() {
             try {
                 val fallback = packageManager.getLaunchIntentForPackage(packageName)
                 fallback?.apply {
-                    putExtra("EXTRA_CAR_BT_CONNECTED", true)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    putExtra("EXTRA_F12_RETURN", true)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
                 }
                 if (fallback != null) {
                     startActivity(fallback)
@@ -104,7 +105,7 @@ class BMWAccessibilityService : AccessibilityService() {
                     val intent = Intent(context, MainActivity::class.java).apply {
                         action = Intent.ACTION_MAIN
                         addCategory(Intent.CATEGORY_LAUNCHER)
-                        putExtra("EXTRA_CAR_BT_CONNECTED", true)
+                        putExtra("EXTRA_F12_RETURN", true)
                         addFlags(
                             Intent.FLAG_ACTIVITY_NEW_TASK or
                             Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
