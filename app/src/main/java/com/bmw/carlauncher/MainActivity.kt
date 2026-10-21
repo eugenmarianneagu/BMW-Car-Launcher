@@ -323,6 +323,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var ivNotifActionIcon: ImageView
     private lateinit var tvNotifActionText: TextView
     private lateinit var btnNotifSpeak: LinearLayout
+    private var ivNotifSpeakIcon: ImageView? = null
+    private var tvNotifSpeakText: TextView? = null
     private var tvNotifCounter: TextView? = null
     private var activeNotification: CarNotification? = null
     private var preNotificationMode: CenterMode = CenterMode.BMW
@@ -798,6 +800,8 @@ class MainActivity : AppCompatActivity() {
         ivNotifActionIcon = findViewById(R.id.iv_notif_action_icon)
         tvNotifActionText = findViewById(R.id.tv_notif_action_text)
         btnNotifSpeak = findViewById(R.id.btn_notif_speak)
+        ivNotifSpeakIcon = findViewById(R.id.iv_notif_speak_icon)
+        tvNotifSpeakText = findViewById(R.id.tv_notif_speak_text)
 
         btnNotifPrev.isFocusable = true
         btnNotifPrev.isFocusableInTouchMode = true
@@ -834,27 +838,26 @@ class MainActivity : AppCompatActivity() {
 
         btnNotifAction.setOnClickListener {
             val notif = activeNotification ?: return@setOnClickListener
-            Log.i("MainActivity", "btnNotifAction apasat! isVoice=${notif.isVoiceMessage}, pkg=${notif.packageName}")
+            Log.i("MainActivity", "btnNotifAction apasat! pkg=${notif.packageName}")
+            notifDismissHandler.removeCallbacks(notifDismissRunnable)
+            openNotification(notif)
+        }
+
+        btnNotifSpeak.setOnClickListener {
+            val notif = activeNotification ?: return@setOnClickListener
+            Log.i("MainActivity", "btnNotifSpeak apasat pentru pkg=${notif.packageName}, isVoice=${notif.isVoiceMessage}")
+            notifDismissHandler.removeCallbacks(notifDismissRunnable)
             if (notif.isVoiceMessage) {
                 if (VoiceMessagePlayer.isPlaying()) {
                     VoiceMessagePlayer.pause()
                 } else if (VoiceMessagePlayer.getCurrentFile() != null) {
                     VoiceMessagePlayer.resume()
                 } else {
-                    notifDismissHandler.removeCallbacks(notifDismissRunnable)
                     playVoiceMessageOrFallback(notif)
                 }
             } else {
-                notifDismissHandler.removeCallbacks(notifDismissRunnable)
-                openNotification(notif)
+                speakNotification(notif)
             }
-        }
-
-        btnNotifSpeak.setOnClickListener {
-            val notif = activeNotification ?: return@setOnClickListener
-            Log.i("MainActivity", "btnNotifSpeak apasat pentru pkg=${notif.packageName}")
-            notifDismissHandler.removeCallbacks(notifDismissRunnable)
-            speakNotification(notif)
         }
 
         VoiceMessagePlayer.init(this)
@@ -862,23 +865,23 @@ class MainActivity : AppCompatActivity() {
             override fun onPlaybackStarted() {
                 runOnUiThread {
                     notifDismissHandler.removeCallbacks(notifDismissRunnable)
-                    tvNotifActionText.text = "PAUZĂ"
-                    ivNotifActionIcon.setImageResource(R.drawable.ic_media_pause)
+                    tvNotifSpeakText?.text = "PAUZĂ"
+                    ivNotifSpeakIcon?.setImageResource(R.drawable.ic_media_pause)
                     pauseOtherPlayersForVoiceMessage()
                 }
             }
 
             override fun onPlaybackPaused() {
                 runOnUiThread {
-                    tvNotifActionText.text = "REIA"
-                    ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
+                    tvNotifSpeakText?.text = "REIA"
+                    ivNotifSpeakIcon?.setImageResource(R.drawable.ic_media_play)
                 }
             }
 
             override fun onPlaybackCompleted() {
                 runOnUiThread {
-                    tvNotifActionText.text = "REDARE"
-                    ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
+                    tvNotifSpeakText?.text = "REDĂ"
+                    ivNotifSpeakIcon?.setImageResource(R.drawable.ic_speaker)
                     resumeOtherPlayersAfterVoiceMessage()
                     resetNotifDismissTimer()
                 }
@@ -886,8 +889,8 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPlaybackError(error: String) {
                 runOnUiThread {
-                    tvNotifActionText.text = "REDARE"
-                    ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
+                    tvNotifSpeakText?.text = "REDĂ"
+                    ivNotifSpeakIcon?.setImageResource(R.drawable.ic_speaker)
                     resumeOtherPlayersAfterVoiceMessage()
                     resetNotifDismissTimer()
                     val notif = activeNotification
@@ -3818,16 +3821,25 @@ class MainActivity : AppCompatActivity() {
             layoutNotifVoiceBadge.visibility = View.VISIBLE
             tvNotifVoiceLabel.text = "MESAJ VOCAL"
             tvNotifText.text = if (notif.message.isNotBlank()) notif.message else "Atinge Redare pentru a asculta"
-            ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
-            tvNotifActionText.text = "REDARE"
-            btnNotifSpeak.visibility = View.GONE
         } else {
             layoutNotifVoiceBadge.visibility = View.GONE
             tvNotifText.text = notif.message
-            ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
-            tvNotifActionText.text = "DESCHIDE"
-            btnNotifSpeak.visibility = View.VISIBLE
         }
+
+        // Butonul 1: DESCHIDE
+        tvNotifActionText.text = "DESCHIDE"
+        ivNotifActionIcon.setImageResource(R.drawable.ic_media_play)
+        btnNotifAction.visibility = View.VISIBLE
+
+        // Butonul 2: REDĂ
+        if (notif.isVoiceMessage && VoiceMessagePlayer.isPlaying()) {
+            tvNotifSpeakText?.text = "PAUZĂ"
+            ivNotifSpeakIcon?.setImageResource(R.drawable.ic_media_pause)
+        } else {
+            tvNotifSpeakText?.text = "REDĂ"
+            ivNotifSpeakIcon?.setImageResource(if (notif.isVoiceMessage) R.drawable.ic_media_play else R.drawable.ic_speaker)
+        }
+        btnNotifSpeak.visibility = View.VISIBLE
 
         centerCircle.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
 
@@ -3837,7 +3849,7 @@ class MainActivity : AppCompatActivity() {
         btnNotifAction.isFocusableInTouchMode = true
         btnNotifAction.post {
             val cur = currentFocus
-            if (cur == null || (cur != btnNotifNext && cur != btnNotifPrev)) {
+            if (cur == null || (cur != btnNotifNext && cur != btnNotifPrev && cur != btnNotifSpeak && cur != btnNotifClose && cur != centerCircle)) {
                 btnNotifAction.requestFocus()
             }
         }
@@ -4196,11 +4208,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun getNotificationFocusableViews(): List<View> {
         val views = mutableListOf<View>()
-        if (::btnNotifPrev.isInitialized && btnNotifPrev.visibility == View.VISIBLE) views.add(btnNotifPrev)
-        if (::btnNotifAction.isInitialized && btnNotifAction.visibility == View.VISIBLE) views.add(btnNotifAction)
-        if (::btnNotifSpeak.isInitialized && btnNotifSpeak.visibility == View.VISIBLE) views.add(btnNotifSpeak)
-        if (::btnNotifNext.isInitialized && btnNotifNext.visibility == View.VISIBLE) views.add(btnNotifNext)
-        if (::btnNotifClose.isInitialized && btnNotifClose.visibility == View.VISIBLE) views.add(btnNotifClose)
+        if (activeNotification != null && layoutNotifEmptyState.visibility != View.VISIBLE) {
+            // 1. deschide
+            if (::btnNotifAction.isInitialized && btnNotifAction.visibility == View.VISIBLE) views.add(btnNotifAction)
+            // 2. reda
+            if (::btnNotifSpeak.isInitialized && btnNotifSpeak.visibility == View.VISIBLE) views.add(btnNotifSpeak)
+            // 3. sageata dreapta
+            if (::btnNotifNext.isInitialized && btnNotifNext.visibility == View.VISIBLE) views.add(btnNotifNext)
+            // 4. sageata stanga
+            if (::btnNotifPrev.isInitialized && btnNotifPrev.visibility == View.VISIBLE) views.add(btnNotifPrev)
+            // 5. cancel
+            if (::btnNotifClose.isInitialized && btnNotifClose.visibility == View.VISIBLE) views.add(btnNotifClose)
+        }
+        // 6. cercul central
+        if (::centerCircle.isInitialized && centerCircle.visibility == View.VISIBLE) views.add(centerCircle)
         return views
     }
 
@@ -4487,7 +4508,12 @@ class MainActivity : AppCompatActivity() {
                 if (notifViews.isNotEmpty()) {
                     val isShift = event.isShiftPressed
                     val current = currentFocus
-                    val currentIndex = notifViews.indexOfFirst { it == current || it.hasFocus() || isViewDescendantOf(current ?: it, it) }
+                    val currentIndex = if (current == centerCircle) {
+                        notifViews.indexOf(centerCircle)
+                    } else {
+                        val matched = notifViews.filter { it != centerCircle }.firstOrNull { it == current || it.hasFocus() || isViewDescendantOf(current ?: it, it) }
+                        if (matched != null) notifViews.indexOf(matched) else -1
+                    }
                     val nextIndex = if (currentIndex < 0) {
                         if (isShift) notifViews.size - 1 else {
                             val actionIdx = notifViews.indexOf(btnNotifAction)
@@ -4499,9 +4525,17 @@ class MainActivity : AppCompatActivity() {
                         if (currentIndex >= notifViews.size - 1) 0 else currentIndex + 1
                     }
                     val target = notifViews[nextIndex]
-                    target.isFocusable = true
-                    target.isFocusableInTouchMode = true
-                    target.requestFocus()
+                    if (target == centerCircle) {
+                        centerCircle.descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
+                        centerCircle.isFocusable = true
+                        centerCircle.isFocusableInTouchMode = true
+                        centerCircle.requestFocus()
+                    } else {
+                        centerCircle.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+                        target.isFocusable = true
+                        target.isFocusableInTouchMode = true
+                        target.requestFocus()
+                    }
                     return true
                 }
             }
@@ -4561,7 +4595,11 @@ class MainActivity : AppCompatActivity() {
                 val focused = currentFocus
                 if (focused != null) {
                     val notifViews = getNotificationFocusableViews()
-                    val target = notifViews.firstOrNull { it == focused || it.hasFocus() || isViewDescendantOf(focused, it) }
+                    val target = if (focused == centerCircle) {
+                        centerCircle
+                    } else {
+                        notifViews.filter { it != centerCircle }.firstOrNull { it == focused || it.hasFocus() || isViewDescendantOf(focused, it) } ?: if (centerCircle in notifViews) centerCircle else null
+                    }
                     if (target != null) {
                         target.isPressed = true
                         target.postDelayed({ target.isPressed = false }, 180)

@@ -1373,7 +1373,7 @@
                                 android:layout_marginStart="6dp"
                                 android:singleLine="true"
                                 android:lines="1"
-                                android:text="REDARE"
+                                android:text="DESCHIDE"
                                 android:textColor="@color/bmw_white"
                                 android:textSize="10sp"
                                 android:textStyle="bold" />
@@ -1402,12 +1402,13 @@
                                 app:tint="@color/bmw_white" />
 
                             <TextView
+                                android:id="@+id/tv_notif_speak_text"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:layout_marginStart="5dp"
                                 android:singleLine="true"
                                 android:lines="1"
-                                android:text="CITEȘTE"
+                                android:text="REDĂ"
                                 android:textColor="@color/bmw_white"
                                 android:textSize="10sp"
                                 android:textStyle="bold" />
