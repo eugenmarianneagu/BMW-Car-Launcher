@@ -4271,60 +4271,130 @@ class MainActivity : AppCompatActivity() {
         return views
     }
 
+    private fun focusAndCenterListItem(listView: AdapterView<*>, targetPos: Int) {
+        val listHeight = if (listView.height > 0) listView.height else (260 * resources.displayMetrics.density).toInt()
+        val sampleChild = (0 until listView.childCount).map { listView.getChildAt(it) }.firstOrNull { it != null && it.height > 0 }
+        val itemHeight = sampleChild?.height ?: (62 * resources.displayMetrics.density).toInt()
+        val centerOffset = ((listHeight - itemHeight) / 2).coerceAtLeast(0)
+
+        if (listView is ListView) {
+            listView.setSelectionFromTop(targetPos, centerOffset)
+        } else if (listView is GridView) {
+            listView.setSelection(targetPos)
+            listView.smoothScrollToPositionFromTop(targetPos, centerOffset, 120)
+        }
+
+        val requestFocusAction = Runnable {
+            val childIndex = targetPos - listView.firstVisiblePosition
+            val rowView = if (childIndex in 0 until listView.childCount) listView.getChildAt(childIndex) else null
+            if (rowView != null) {
+                rowView.isFocusable = true
+                rowView.isFocusableInTouchMode = true
+                rowView.requestFocus()
+            }
+        }
+
+        listView.post(requestFocusAction)
+        listView.postDelayed(requestFocusAction, 35L)
+    }
+
     private fun handleOverlayTabNavigation(overlay: ViewGroup, isShift: Boolean): Boolean {
         val listView: AdapterView<*>? = when (overlay) {
-            favoritesOverlayContainer -> if (::listFavoriteContacts.isInitialized) listFavoriteContacts else null
-            radioOverlayContainer -> if (::listRadioStations.isInitialized) listRadioStations else null
-            musicOverlayContainer -> if (::listMusicApps.isInitialized) listMusicApps else null
-            appsOverlayContainer -> if (::gridAllApps.isInitialized) gridAllApps else null
+            favoritesOverlayContainer -> if (::listFavoriteContacts.isInitialized && listFavoriteContacts.visibility == View.VISIBLE) listFavoriteContacts else null
+            radioOverlayContainer -> if (::listRadioStations.isInitialized && listRadioStations.visibility == View.VISIBLE) listRadioStations else null
+            musicOverlayContainer -> if (::listMusicApps.isInitialized && listMusicApps.visibility == View.VISIBLE) listMusicApps else null
+            appsOverlayContainer -> if (::gridAllApps.isInitialized && gridAllApps.visibility == View.VISIBLE) gridAllApps else null
             else -> null
         }
 
         val current = currentFocus
 
-        // Daca suntem pe ultimul copil vizibil din lista si mai sunt elemente in jos, derulam lista
-        if (listView != null && listView.visibility == View.VISIBLE && listView.childCount > 0) {
-            val lastChild = listView.getChildAt(listView.childCount - 1)
-            val firstChild = listView.getChildAt(0)
+        if (listView != null && listView.count > 0) {
+            val headerViews = when (overlay) {
+                favoritesOverlayContainer -> listOfNotNull(
+                    if (::btnCloseFavorites.isInitialized && btnCloseFavorites.visibility == View.VISIBLE) btnCloseFavorites else null,
+                    if (::btnOpenDialer.isInitialized && btnOpenDialer.visibility == View.VISIBLE) btnOpenDialer else null
+                )
+                radioOverlayContainer -> listOfNotNull(
+                    if (::btnCloseRadio.isInitialized && btnCloseRadio.visibility == View.VISIBLE) btnCloseRadio else null,
+                    if (::btnAddStation.isInitialized && btnAddStation.visibility == View.VISIBLE) btnAddStation else null
+                )
+                musicOverlayContainer -> listOfNotNull(
+                    if (::btnCloseMusic.isInitialized && btnCloseMusic.visibility == View.VISIBLE) btnCloseMusic else null
+                )
+                appsOverlayContainer -> listOfNotNull(
+                    if (::btnCloseApps.isInitialized && btnCloseApps.visibility == View.VISIBLE) btnCloseApps else null
+                )
+                else -> emptyList()
+            }
 
-            if (!isShift && (current == lastChild || (current != null && isViewDescendantOf(current, lastChild)))) {
-                val adapterCount = listView.count
-                val lastPos = listView.lastVisiblePosition
-                if (lastPos < adapterCount - 1) {
-                    val nextPos = (lastPos + 1).coerceAtMost(adapterCount - 1)
-                    if (listView is ListView) {
-                        listView.setSelection(nextPos)
-                    } else if (listView is GridView) {
-                        listView.setSelection(nextPos)
+            val headerIndex = headerViews.indexOfFirst { it == current || (current != null && isViewDescendantOf(current, it)) }
+            val currentPos = if (current != null) listView.getPositionForView(current) else AdapterView.INVALID_POSITION
+
+            if (!isShift) {
+                // Navigare înainte (TAB)
+                when {
+                    headerIndex in 0 until headerViews.size - 1 -> {
+                        headerViews[headerIndex + 1].requestFocus()
+                        return true
                     }
-                    listView.post {
-                        val newLast = listView.getChildAt(listView.childCount - 1)
-                        newLast?.isFocusable = true
-                        newLast?.isFocusableInTouchMode = true
-                        newLast?.requestFocus()
+                    headerIndex == headerViews.size - 1 -> {
+                        focusAndCenterListItem(listView, 0)
+                        return true
                     }
-                    return true
+                    currentPos in 0 until listView.count - 1 -> {
+                        focusAndCenterListItem(listView, currentPos + 1)
+                        return true
+                    }
+                    currentPos == listView.count - 1 -> {
+                        if (headerViews.isNotEmpty()) {
+                            headerViews[0].requestFocus()
+                        } else {
+                            focusAndCenterListItem(listView, 0)
+                        }
+                        return true
+                    }
+                    else -> {
+                        if (headerViews.isNotEmpty()) {
+                            headerViews[0].requestFocus()
+                        } else {
+                            focusAndCenterListItem(listView, 0)
+                        }
+                        return true
+                    }
                 }
-            } else if (isShift && (current == firstChild || (current != null && isViewDescendantOf(current, firstChild)))) {
-                val firstPos = listView.firstVisiblePosition
-                if (firstPos > 0) {
-                    val prevPos = (firstPos - 1).coerceAtLeast(0)
-                    if (listView is ListView) {
-                        listView.setSelection(prevPos)
-                    } else if (listView is GridView) {
-                        listView.setSelection(prevPos)
+            } else {
+                // Navigare înapoi (SHIFT + TAB)
+                when {
+                    headerIndex > 0 -> {
+                        headerViews[headerIndex - 1].requestFocus()
+                        return true
                     }
-                    listView.post {
-                        val newFirst = listView.getChildAt(0)
-                        newFirst?.isFocusable = true
-                        newFirst?.isFocusableInTouchMode = true
-                        newFirst?.requestFocus()
+                    headerIndex == 0 -> {
+                        focusAndCenterListItem(listView, listView.count - 1)
+                        return true
                     }
-                    return true
+                    currentPos > 0 -> {
+                        focusAndCenterListItem(listView, currentPos - 1)
+                        return true
+                    }
+                    currentPos == 0 -> {
+                        if (headerViews.isNotEmpty()) {
+                            headerViews.last().requestFocus()
+                        } else {
+                            focusAndCenterListItem(listView, listView.count - 1)
+                        }
+                        return true
+                    }
+                    else -> {
+                        focusAndCenterListItem(listView, listView.count - 1)
+                        return true
+                    }
                 }
             }
         }
 
+        // Pentru ferestre fără liste (Settings, Apel activ etc.)
         val focusableViews = getOverlayFocusableViews(overlay)
         Log.d("MainActivity", "handleOverlayTabNavigation: overlay=$overlay, focusableCount=${focusableViews.size}, current=$current")
         if (focusableViews.isEmpty()) return true
