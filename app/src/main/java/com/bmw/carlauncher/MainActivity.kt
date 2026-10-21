@@ -2938,11 +2938,6 @@ class MainActivity : AppCompatActivity() {
                     showDeleteStationDialog(position, station.name)
                 }
 
-                view.setOnLongClickListener {
-                    showEditStationDialog(position, station)
-                    true
-                }
-
                 view.setOnClickListener {
                     radioOverlayContainer.visibility = View.GONE
                     focusPlayPauseButton()
