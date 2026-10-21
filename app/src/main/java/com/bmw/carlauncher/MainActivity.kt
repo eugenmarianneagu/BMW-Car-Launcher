@@ -2151,6 +2151,8 @@ class MainActivity : AppCompatActivity() {
 
         if (currentMode == CenterMode.NOTIFICATION) {
             updateNotificationCenterView()
+        } else {
+            notifDismissHandler.removeCallbacks(notifDismissRunnable)
         }
 
         when (currentMode) {
@@ -2382,7 +2384,7 @@ class MainActivity : AppCompatActivity() {
 
         // Daca in Cercul Central era afisata cealalta aplicatie, actualizeaza imediat afisajul de jos
         if (!ExternalMediaManager.currentData.packageName.equals(resolvedPkg, ignoreCase = true)) {
-            centerMediaThumbnail.setImageResource(R.drawable.bmw_logo)
+            centerMediaThumbnail.setImageResource(R.drawable.ic_no_player_active)
             centerMediaThumbnail.visibility = View.VISIBLE
             bottomTrackTitle.text = "YouTube Music"
             bottomTrackArtist.text = "Selectează o melodie..."
@@ -2920,12 +2922,25 @@ class MainActivity : AppCompatActivity() {
                     actionIcon.setImageResource(R.drawable.ic_media_play)
                 }
 
+                val btnEdit = view.findViewById<FrameLayout>(R.id.btn_edit_station)
+                btnEdit.isFocusable = true
+                btnEdit.isFocusableInTouchMode = false
+                btnEdit.enableInstantClickOnTouch()
+                btnEdit.setOnClickListener {
+                    showEditStationDialog(position, station)
+                }
+
                 val btnDelete = view.findViewById<FrameLayout>(R.id.btn_delete_station)
                 btnDelete.isFocusable = true
                 btnDelete.isFocusableInTouchMode = false
                 btnDelete.enableInstantClickOnTouch()
                 btnDelete.setOnClickListener {
                     showDeleteStationDialog(position, station.name)
+                }
+
+                view.setOnLongClickListener {
+                    showEditStationDialog(position, station)
+                    true
                 }
 
                 view.setOnClickListener {
@@ -2950,6 +2965,60 @@ class MainActivity : AppCompatActivity() {
         btnCloseRadio.isFocusable = true
         btnCloseRadio.isFocusableInTouchMode = false
         btnCloseRadio.enableInstantClickOnTouch()
+    }
+
+    private fun showEditStationDialog(position: Int, station: RadioStation) {
+        val dialogLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 16)
+        }
+
+        val nameInput = EditText(this).apply {
+            hint = "Nume post (ex: Rock FM)"
+            setText(station.name)
+        }
+        val genreInput = EditText(this).apply {
+            hint = "Gen (ex: Classic Rock)"
+            setText(station.genre)
+        }
+        val urlInput = EditText(this).apply {
+            hint = "URL Stream (http/https...)"
+            setText(station.url)
+        }
+        val logoInput = EditText(this).apply {
+            hint = "URL Siglă (opțional)"
+            setText(station.logoUrl)
+        }
+
+        dialogLayout.addView(nameInput)
+        dialogLayout.addView(genreInput)
+        dialogLayout.addView(urlInput)
+        dialogLayout.addView(logoInput)
+
+        AlertDialog.Builder(this)
+            .setTitle("Editează Postul Radio")
+            .setView(dialogLayout)
+            .setPositiveButton("Salvează") { _, _ ->
+                val name = nameInput.text.toString().trim()
+                val genre = genreInput.text.toString().trim().ifEmpty { "Live Radio" }
+                val url = urlInput.text.toString().trim()
+                val logo = logoInput.text.toString().trim()
+
+                if (name.isNotEmpty() && (url.startsWith("http://") || url.startsWith("https://"))) {
+                    if (position in 0 until stations.size) {
+                        stations[position] = RadioStation(name, genre, url, logo)
+                        StationManager.saveStations(this, stations)
+                        refreshStations()
+                        reloadServicePlaylist()
+                        (listRadioStations.adapter as? BaseAdapter)?.notifyDataSetChanged()
+                        Toast.makeText(this, "Postul \"$name\" a fost actualizat", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Toast.makeText(this, "Completează numele și un URL valid (http/https)!", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton("Anulează", null)
+            .show()
     }
 
     private fun showDeleteStationDialog(position: Int, stationName: String) {
@@ -3006,6 +3075,7 @@ class MainActivity : AppCompatActivity() {
                     StationManager.saveStations(this, stations)
                     refreshStations()
                     reloadServicePlaylist()
+                    (listRadioStations.adapter as? BaseAdapter)?.notifyDataSetChanged()
                 } else {
                     Toast.makeText(this, "Completeaza numele si un URL valid (http/https)!", Toast.LENGTH_LONG).show()
                 }
@@ -3248,7 +3318,7 @@ class MainActivity : AppCompatActivity() {
                         centerMediaThumbnail.setImageBitmap(data.artBitmap)
                         centerMediaThumbnail.visibility = View.VISIBLE
                     } else {
-                        centerMediaThumbnail.setImageResource(R.drawable.bmw_logo)
+                        centerMediaThumbnail.setImageResource(R.drawable.ic_no_player_active)
                         centerMediaThumbnail.visibility = View.VISIBLE
                     }
                     if (data.isPlaying) {
@@ -3493,7 +3563,11 @@ class MainActivity : AppCompatActivity() {
                         .build()
                     textToSpeech?.setAudioAttributes(audioAttributes)
                     textToSpeech?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
-                        override fun onStart(utteranceId: String?) {}
+                        override fun onStart(utteranceId: String?) {
+                            runOnUiThread {
+                                notifDismissHandler.removeCallbacks(notifDismissRunnable)
+                            }
+                        }
                         override fun onDone(utteranceId: String?) {
                             runOnUiThread {
                                 resumeOtherPlayersAfterVoiceMessage()
@@ -3775,7 +3849,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun resetNotifDismissTimer() {
         notifDismissHandler.removeCallbacks(notifDismissRunnable)
-        // Notificările rămân deschise în cercul central cât timp sunt prezente în bara de notificări
+        if (currentMode == CenterMode.NOTIFICATION) {
+            notifDismissHandler.postDelayed(notifDismissRunnable, 25000L)
+        }
     }
 
     private fun dismissNotification() {
@@ -3786,7 +3862,7 @@ class MainActivity : AppCompatActivity() {
         }
         centerCircle.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
         if (currentMode == CenterMode.NOTIFICATION) {
-            currentMode = preNotificationMode
+            currentMode = if (preNotificationMode == CenterMode.NOTIFICATION) CenterMode.BMW else preNotificationMode
             updateCenterModeUI(animateFrom = CenterMode.NOTIFICATION)
         }
     }

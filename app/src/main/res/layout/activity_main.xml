@@ -651,7 +651,7 @@
                         android:id="@+id/center_media_thumbnail"
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
-                        android:src="@drawable/bmw_logo"
+                        android:src="@drawable/ic_no_player_active"
                         android:scaleType="centerCrop" />
 
                     <View
