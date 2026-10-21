@@ -3553,6 +3553,13 @@ class MainActivity : AppCompatActivity() {
                 btnNotifPrev.visibility = View.GONE
                 btnNotifNext.visibility = View.GONE
                 tvNotifCounter?.visibility = View.GONE
+
+                centerCircle.descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
+                centerCircle.isFocusable = true
+                centerCircle.isFocusableInTouchMode = true
+                centerCircle.post {
+                    centerCircle.requestFocus()
+                }
             } else {
                 layoutNotifEmptyState.visibility = View.GONE
                 notifHeaderRow.visibility = View.VISIBLE
@@ -4359,8 +4366,15 @@ class MainActivity : AppCompatActivity() {
             val currentIndex = focusOrderViews.indexOfFirst { it == currentFocusView || it.hasFocus() }
 
             val nextIndex = if (currentIndex < 0) {
-                // Dacă nu e focalizat niciun buton, pornim de la 0 (Radio) sau ultimul
-                if (isShift) focusOrderViews.size - 1 else 0
+                // Dacă nu e focalizat niciun buton, pornim de la cercul central (dacă suntem în mod notificare fără notificări) sau de la 0 / ultimul
+                if (currentMode == CenterMode.NOTIFICATION) {
+                    val centerIdx = focusOrderViews.indexOf(centerCircle)
+                    if (centerIdx >= 0) centerIdx else if (isShift) focusOrderViews.size - 1 else 0
+                } else if (isShift) {
+                    focusOrderViews.size - 1
+                } else {
+                    0
+                }
             } else if (isShift) {
                 if (currentIndex <= 0) focusOrderViews.size - 1 else currentIndex - 1
             } else {
