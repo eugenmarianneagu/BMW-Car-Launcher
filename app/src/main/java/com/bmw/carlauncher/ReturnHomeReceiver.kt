@@ -53,7 +53,7 @@ class ReturnHomeReceiver : BroadcastReceiver() {
             }
 
             if (!isTargetDevice) {
-                Log.d(TAG, "Dispozitiv ignorat (nu corespunde MAC-ului mașinii): '$devName', adresa=$devAddress")
+                Log.d(TAG, "Dispozitiv ignorat (nu corespunde MAC-ului maÈ™inii): '$devName', adresa=$devAddress")
                 return
             }
 
@@ -61,20 +61,20 @@ class ReturnHomeReceiver : BroadcastReceiver() {
             val lastDisconnect = MainActivity.lastDisconnectTimestamp
             val prefsDisconnect = prefs.getLong("last_disconnect_elapsed_time", 0L)
             val effectiveDisconnect = maxOf(lastDisconnect, prefsDisconnect)
-            val cooldownMs = 15000L // 15 secunde cooldown impotriva repornirilor din condensatorii convertorului DC-DC
+            val cooldownMs = 15000L // 15 secunde cooldown Ã®mpotriva repornirilor din condensatorii convertorului DC-DC
 
             if (effectiveDisconnect > 0L && now - effectiveDisconnect < cooldownMs) {
                 val secLeft = (cooldownMs - (now - effectiveDisconnect)) / 1000L
-                Log.w(TAG, "Conectare ignorata (in cooldown de deconectare, $secLeft secunde ramase): '$devName', adresa=$devAddress")
+                Log.w(TAG, "Conectare ignoratÄƒ (Ã®n cooldown de deconectare, $secLeft secunde rÄƒmase): '$devName', adresa=$devAddress")
                 return
             }
 
-            Log.i(TAG, "Dispozitiv mașină detectat ($devAddress)! Pornire muzică și aducere în prim-plan...")
+            Log.i(TAG, "Dispozitiv maÈ™inÄƒ detectat ($devAddress)! Pornire muzicÄƒ È™i aducere Ã®n prim-plan...")
             MainActivity.lastDisconnectTimestamp = 0L
             prefs.edit().remove("last_disconnect_elapsed_time").apply()
             MainActivity.isCarConnectedState = true
 
-            // A. Pornește redarea radio / muzică
+            // A. PorneÈ™te redarea radio / muzicÄƒ
             try {
                 val radioIntent = Intent(context, RadioService::class.java).apply {
                     this.action = RadioService.ACTION_START_PLAY
@@ -88,14 +88,14 @@ class ReturnHomeReceiver : BroadcastReceiver() {
                 Log.e(TAG, "Eroare la pornirea RadioService: ${e.message}")
             }
 
-            // B. Notifică instanța dacă e deja activă
+            // B. NotificÄƒ instanÈ›a dacÄƒ e deja activÄƒ
             MainActivity.instance?.let { act ->
                 act.runOnUiThread {
                     act.startRadioPlayback()
                 }
             }
 
-            // C. Aduce aplicația în prim-plan
+            // C. Aduce aplicaÈ›ia Ã®n prim-plan
             BMWAccessibilityService.bringToForeground(context)
             return
         }
@@ -104,11 +104,13 @@ class ReturnHomeReceiver : BroadcastReceiver() {
         // 2. DECONECTARE BLUETOOTH DE LA DISPOZITIVUL SELECTAT
         // ==============================================================
         val isAclDisconnect = (action == BluetoothDevice.ACTION_ACL_DISCONNECTED)
+        val isA2dpDisconnect = (action == BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED &&
+                intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1) == BluetoothProfile.STATE_DISCONNECTED)
         val isBtOff = (action == android.bluetooth.BluetoothAdapter.ACTION_STATE_CHANGED &&
                 (intent.getIntExtra(android.bluetooth.BluetoothAdapter.EXTRA_STATE, -1) == android.bluetooth.BluetoothAdapter.STATE_OFF ||
                  intent.getIntExtra(android.bluetooth.BluetoothAdapter.EXTRA_STATE, -1) == android.bluetooth.BluetoothAdapter.STATE_TURNING_OFF))
 
-        if (isAclDisconnect || isBtOff) {
+        if (isAclDisconnect || isA2dpDisconnect || isBtOff) {
             val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
             } else {
@@ -135,14 +137,19 @@ class ReturnHomeReceiver : BroadcastReceiver() {
                 return
             }
 
-            val pendingResult = goAsync()
-            Log.i(TAG, "Dispozitiv țintă deconectat ($devAddress)! Oprire muzică, revenire pe Home și blocare telefon...")
-            MainActivity.isCarConnectedState = false
-            val disconnectTime = SystemClock.elapsedRealtime()
-            MainActivity.lastDisconnectTimestamp = disconnectTime
-            prefs.edit().putLong("last_disconnect_elapsed_time", disconnectTime).apply()
+            val now = SystemClock.elapsedRealtime()
+            if (!MainActivity.isCarConnectedState && now - MainActivity.lastDisconnectTimestamp < 5000L) {
+                Log.d(TAG, "Deconectare $action deja procesatÄƒ acum ${now - MainActivity.lastDisconnectTimestamp}ms, ignorare duplicat.")
+                return
+            }
 
-            // A. Oprește radioul / muzica la deconectare
+            val pendingResult = goAsync()
+            Log.i(TAG, "Dispozitiv È›intÄƒ deconectat ($devAddress)! Oprire muzicÄƒ, curÄƒÈ›are Recents È™i blocare telefon...")
+            MainActivity.isCarConnectedState = false
+            MainActivity.lastDisconnectTimestamp = now
+            prefs.edit().putLong("last_disconnect_elapsed_time", now).apply()
+
+            // A. OpreÈ™te radioul / muzica la deconectare
             try {
                 context.sendBroadcast(Intent(RadioService.ACTION_STOP_RADIO).setPackage(context.packageName))
             } catch (_: Exception) {}
@@ -153,11 +160,6 @@ class ReturnHomeReceiver : BroadcastReceiver() {
                     try {
                         act.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     } catch (_: Exception) {}
-                }
-            }
-
-                        MainActivity.instance?.let { act ->
-                act.runOnUiThread {
                     try {
                         act.finishAndRemoveTask()
                     } catch (_: Exception) {
@@ -178,7 +180,12 @@ class ReturnHomeReceiver : BroadcastReceiver() {
             return
         }
 
-        launchMainActivity(context)
+        // ==============================================================
+        // 3. COMENZI EXPLICITE DE REVENIRE (F12 / RETURN_HOME)
+        // ==============================================================
+        if (action == "com.bmw.carlauncher.ACTION_F12" || action == "com.bmw.carlauncher.RETURN_HOME") {
+            launchMainActivity(context)
+        }
     }
 
     private fun launchMainActivity(context: Context) {
