@@ -388,6 +388,43 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun handleCarDisconnected(reason: String) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (!isCarConnectedState && now - lastDisconnectTimestamp < 3000L) {
+            return
+        }
+        Log.i("MainActivity", "handleCarDisconnected ($reason): oprire audio, background și blocare ecran")
+        isCarConnectedState = false
+        lastDisconnectTimestamp = now
+        ExternalMediaManager.cancelAutoReturn()
+        stopAllAudioPlayers()
+
+        try {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            clearShowWhenLocked()
+        } catch (_: Exception) {}
+
+        try {
+            moveTaskToBack(true)
+        } catch (_: Exception) {}
+        val homeDone = BMWAccessibilityService.goToHomeScreen()
+        if (!homeDone) {
+            try {
+                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(homeIntent)
+            } catch (_: Exception) {}
+        }
+
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (!isCarConnectedState) {
+                BMWAccessibilityService.lockScreen()
+            }
+        }, 500L)
+    }
+
     private val bluetoothReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val action = intent.action ?: return
@@ -412,45 +449,30 @@ class MainActivity : AppCompatActivity() {
                 devName.contains("ESP32", ignoreCase = true)
             }
 
+            val now = android.os.SystemClock.elapsedRealtime()
+            val isInDisconnectCooldown = (lastDisconnectTimestamp > 0L && now - lastDisconnectTimestamp < 8000L)
+
             when (action) {
                 BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
                     if (isCarDevice && devAddress.isNotEmpty()) {
-                        Log.i("MainActivity", "Car device ACL disconnected: $devName ($devAddress)")
-                        isCarConnectedState = false
-                        lastDisconnectTimestamp = android.os.SystemClock.elapsedRealtime()
-                        stopAllAudioPlayers()
-                        try {
-                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                            clearShowWhenLocked()
-                        } catch (_: Exception) {}
-                        val homeDone = BMWAccessibilityService.goToHomeScreen()
-                        if (!homeDone) {
-                            try {
-                                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                                    addCategory(Intent.CATEGORY_HOME)
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                }
-                                startActivity(homeIntent)
-                            } catch (_: Exception) {}
-                        }
-                        Handler(Looper.getMainLooper()).postDelayed({
-                            BMWAccessibilityService.lockScreen()
-                        }, 450L)
+                        handleCarDisconnected("ACL_DISCONNECTED: $devName ($devAddress)")
                     }
                 }
                 BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED -> {
                     val state = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1)
-                    if (isCarDevice && state == BluetoothProfile.STATE_CONNECTED) {
+                    if (isCarDevice && state == BluetoothProfile.STATE_CONNECTED && !isInDisconnectCooldown) {
                         Log.i("MainActivity", "Car device A2DP connected: $devName")
                         lastDisconnectTimestamp = 0L
                         isCarConnectedState = true
                         startRadioPlayback()
                         BMWAccessibilityService.bringToForeground(this@MainActivity)
+                    } else if (isCarDevice && state == BluetoothProfile.STATE_DISCONNECTED) {
+                        handleCarDisconnected("A2DP_DISCONNECTED: $devName")
                     }
                 }
                 BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED -> {
                     val state = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1)
-                    if (isCarDevice && state == BluetoothProfile.STATE_CONNECTED) {
+                    if (isCarDevice && state == BluetoothProfile.STATE_CONNECTED && !isInDisconnectCooldown) {
                         Log.i("MainActivity", "Car device Headset connected: $devName")
                         lastDisconnectTimestamp = 0L
                         isCarConnectedState = true
@@ -459,7 +481,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 BluetoothDevice.ACTION_ACL_CONNECTED -> {
-                    if (isCarDevice && devAddress.isNotEmpty()) {
+                    if (isCarDevice && devAddress.isNotEmpty() && !isInDisconnectCooldown) {
                         Log.i("MainActivity", "Car device ACL connected: $devName ($devAddress)")
                         lastDisconnectTimestamp = 0L
                         isCarConnectedState = true
@@ -470,14 +492,7 @@ class MainActivity : AppCompatActivity() {
                 BluetoothAdapter.ACTION_STATE_CHANGED -> {
                     val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1)
                     if (state == BluetoothAdapter.STATE_OFF || state == BluetoothAdapter.STATE_TURNING_OFF) {
-                        Log.i("MainActivity", "Bluetooth adapter turned off")
-                        isCarConnectedState = false
-                        lastDisconnectTimestamp = android.os.SystemClock.elapsedRealtime()
-                        stopAllAudioPlayers()
-                        BMWAccessibilityService.goToHomeScreen()
-                        Handler(Looper.getMainLooper()).postDelayed({
-                            BMWAccessibilityService.lockScreen()
-                        }, 350L)
+                        handleCarDisconnected("BT_ADAPTER_OFF")
                     }
                 }
             }
@@ -641,7 +656,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun enableImmersiveMode() {
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val inDisconnectCooldown = !isCarConnectedState && lastDisconnectTimestamp > 0L &&
+                (android.os.SystemClock.elapsedRealtime() - lastDisconnectTimestamp < 10000L)
+        if (!inDisconnectCooldown) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
 
         // Permite desenarea bordului pe 100% din ecran fizic (inclusiv in jurul camerei de selfie, eliminand banda neagra)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -3329,7 +3348,10 @@ class MainActivity : AppCompatActivity() {
         val ctrl = controller ?: return
         updateRadioUI(ctrl)
 
-        if (!ctrl.isPlaying && currentMode != CenterMode.MEDIA && !ExternalMediaManager.currentData.isPlaying) {
+        val inDisconnectCooldown = lastDisconnectTimestamp > 0L &&
+                (android.os.SystemClock.elapsedRealtime() - lastDisconnectTimestamp < 10000L)
+
+        if (isCarConnectedState && !inDisconnectCooldown && !ctrl.isPlaying && currentMode != CenterMode.MEDIA && !ExternalMediaManager.currentData.isPlaying) {
             ctrl.play()
         }
 
