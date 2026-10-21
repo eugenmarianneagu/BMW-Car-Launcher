@@ -18,8 +18,8 @@ class ReturnHomeReceiver : BroadcastReceiver() {
         Log.i(TAG, "ReturnHomeReceiver triggered with action: $action")
 
         if (action == "com.bmw.carlauncher.ACTION_LOCK_SCREEN") {
-            val locked = BMWAccessibilityService.lockScreen()
-            Log.i(TAG, "Direct ACTION_LOCK_SCREEN: lockScreen returned $locked")
+            Log.i(TAG, "Direct ACTION_LOCK_SCREEN: calling clearRecentsAndLockScreen()")
+            BMWAccessibilityService.clearRecentsAndLockScreen()
             return
         }
 
@@ -156,33 +156,24 @@ class ReturnHomeReceiver : BroadcastReceiver() {
                 }
             }
 
-            // B. Revine la ecranul de Home al telefonului
-            val homeSuccess = BMWAccessibilityService.goToHomeScreen()
-            if (!homeSuccess) {
-                try {
-                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                        addCategory(Intent.CATEGORY_HOME)
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        MainActivity.instance?.let { act ->
+                act.runOnUiThread {
+                    try {
+                        act.finishAndRemoveTask()
+                    } catch (_: Exception) {
+                        try { act.moveTaskToBack(true) } catch (_: Exception) {}
                     }
-                    context.startActivity(homeIntent)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Eroare lansare Home Intent", e)
                 }
             }
 
-            // C. Blochează ecranul telefonului după tranziția la Home
+            // B. CurÄƒÈ›Äƒ aplicaÈ›iile din Recents È™i blocheazÄƒ ecranul
+            BMWAccessibilityService.clearRecentsAndLockScreen()
+
             Handler(Looper.getMainLooper()).postDelayed({
                 try {
-                    val locked = BMWAccessibilityService.lockScreen()
-                    Log.i(TAG, "BMWAccessibilityService.lockScreen() apelat: $locked")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Eroare lockScreen in ReturnHomeReceiver: ${e.message}")
-                } finally {
-                    try {
-                        pendingResult.finish()
-                    } catch (_: Exception) {}
-                }
-            }, 450L)
+                    pendingResult.finish()
+                } catch (_: Exception) {}
+            }, 2500L)
 
             return
         }

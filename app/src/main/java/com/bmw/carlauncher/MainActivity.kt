@@ -406,24 +406,15 @@ class MainActivity : AppCompatActivity() {
             clearShowWhenLocked()
         } catch (_: Exception) {}
 
-        // 1. Blochează ecranul PRIMUL (cât timp aplicația mai are încă focus pe ecran)
-        BMWAccessibilityService.lockScreen()
-
-        // 2. Imediat după, duce aplicația în background și revine pe Home Screen
+        // Elimina aplicatia din prim-plan si din Recents
         try {
-            moveTaskToBack(true)
-        } catch (_: Exception) {}
-        
-        val homeDone = BMWAccessibilityService.goToHomeScreen()
-        if (!homeDone) {
-            try {
-                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                    addCategory(Intent.CATEGORY_HOME)
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-                startActivity(homeIntent)
-            } catch (_: Exception) {}
+            finishAndRemoveTask()
+        } catch (_: Exception) {
+            try { moveTaskToBack(true) } catch (_: Exception) {}
         }
+
+        // Curata aplicatiile din Recents si blocheaza ecranul
+        BMWAccessibilityService.clearRecentsAndLockScreen()
     }
 
     private val bluetoothReceiver = object : BroadcastReceiver() {

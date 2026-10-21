@@ -6,13 +6,19 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.text.TextUtils
 import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 
 class BMWAccessibilityService : AccessibilityService() {
+
+    private var isClearingRecents = false
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -21,9 +27,11 @@ class BMWAccessibilityService : AccessibilityService() {
             val info = serviceInfo ?: AccessibilityServiceInfo()
             info.eventTypes = AccessibilityEvent.TYPES_ALL_MASK
             info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-            info.flags = info.flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+            info.flags = info.flags or
+                    AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS or
+                    AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
             serviceInfo = info
-            Log.d(TAG, "BMWAccessibilityService connected, key filter active.")
+            Log.d(TAG, "BMWAccessibilityService connected, key filter and window retrieve active.")
         } catch (e: Exception) {
             Log.e(TAG, "Error configuring AccessibilityServiceInfo", e)
         }
@@ -78,8 +86,85 @@ class BMWAccessibilityService : AccessibilityService() {
         }
     }
 
+    fun startClearRecentsAndLock() {
+        Log.i(TAG, "startClearRecentsAndLock() called")
+        isClearingRecents = true
+
+        // 1. Deschide ecranul Recents
+        val recentsSuccess = performGlobalAction(GLOBAL_ACTION_RECENTS)
+        Log.i(TAG, "performGlobalAction(GLOBAL_ACTION_RECENTS) returned: $recentsSuccess")
+
+        // 2. Prima Ã®ncercare de apÄƒsare a butonului de curÄƒÈ›are din Recents
+        mainHandler.postDelayed({
+            val clicked = tryClickClearButton()
+            Log.i(TAG, "Attempt 1 to click clear button in Recents: $clicked")
+        }, 350L)
+
+        // 3. A doua Ã®ncercare È™i revenire pe ecranul Home
+        mainHandler.postDelayed({
+            if (isClearingRecents) {
+                val clicked = tryClickClearButton()
+                Log.i(TAG, "Attempt 2 to click clear button in Recents: $clicked")
+            }
+            performGlobalAction(GLOBAL_ACTION_HOME)
+        }, 750L)
+
+        // 4. BlocheazÄƒ ecranul dupÄƒ ce Home s-a aÈ™ezat
+        mainHandler.postDelayed({
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val locked = performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
+                Log.i(TAG, "clearRecentsAndLockScreen: lockScreen executed ($locked)")
+            }
+            isClearingRecents = false
+        }, 1200L)
+    }
+
+    private fun tryClickClearButton(): Boolean {
+        try {
+            val root = rootInActiveWindow ?: return false
+            // CÄƒutare dupÄƒ ID-ul specific Xiaomi MIUI / HyperOS
+            val nodes = root.findAccessibilityNodeInfosByViewId("com.miui.home:id/clearAnimView")
+            if (!nodes.isNullOrEmpty()) {
+                for (node in nodes) {
+                    if (node.isClickable) {
+                        val clicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                        Log.i(TAG, "clearAnimView clicked successfully: $clicked")
+                        isClearingRecents = false
+                        return true
+                    }
+                }
+            }
+
+            // CÄƒutare alternativÄƒ dupÄƒ text sau descriere
+            val textCandidates = listOf("Clear all Recents", "È˜tergeÈ›i", "È˜terge", "CurÄƒÈ›Äƒ", "Clear all", "Clear")
+            for (text in textCandidates) {
+                val found = root.findAccessibilityNodeInfosByText(text)
+                for (node in found) {
+                    if (node.isClickable) {
+                        val clicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                        Log.i(TAG, "Clear button found by text '$text' and clicked: $clicked")
+                        isClearingRecents = false
+                        return true
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in tryClickClearButton: ${e.message}")
+        }
+        return false
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Nu este necesar pentru interceptarea tastelor
+        if (isClearingRecents && event != null) {
+            val pkg = event.packageName?.toString() ?: ""
+            if (pkg.contains("miui.home") || pkg.contains("launcher") || pkg.contains("systemui")) {
+                mainHandler.postDelayed({
+                    if (isClearingRecents) {
+                        tryClickClearButton()
+                    }
+                }, 150L)
+            }
+        }
     }
 
     override fun onInterrupt() {
@@ -147,6 +232,24 @@ class BMWAccessibilityService : AccessibilityService() {
             return false
         }
 
+        fun clearRecentsAndLockScreen() {
+            val s = instance
+            if (s != null) {
+                s.startClearRecentsAndLock()
+            } else {
+                Log.w(TAG, "clearRecentsAndLockScreen: instance is null, falling back to home intent")
+                MainActivity.instance?.let { act ->
+                    try {
+                        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                            addCategory(Intent.CATEGORY_HOME)
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        act.startActivity(homeIntent)
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+
         fun goHomeAndLockScreen() {
             val s = instance
             if (s != null) {
@@ -155,7 +258,7 @@ class BMWAccessibilityService : AccessibilityService() {
                 } catch (e: Exception) {
                     Log.e(TAG, "Error performing home", e)
                 }
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                Handler(Looper.getMainLooper()).postDelayed({
                     try {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                             val locked = s.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
