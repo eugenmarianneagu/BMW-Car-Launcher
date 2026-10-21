@@ -651,9 +651,8 @@
                         android:id="@+id/center_media_thumbnail"
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
-                        android:src="@drawable/img_bmw_cassette"
-                        android:scaleType="centerCrop"
-                        android:visibility="gone" />
+                        android:src="@drawable/bmw_logo"
+                        android:scaleType="centerCrop" />
 
                     <View
                         android:id="@+id/center_media_scrim"
@@ -689,66 +688,6 @@
                             android:layout_height="wrap_content"
                             android:visibility="gone" />
                     </LinearLayout>
-
-                    <!-- Stare: Niciun player activ (Casetofon BMW Bavaria + Text) -->
-                    <RelativeLayout
-                        android:id="@+id/layout_media_empty_state"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:background="#000000"
-                        android:clickable="false"
-                        android:focusable="false"
-                        android:visibility="visible">
-
-                        <ImageView
-                            android:id="@+id/iv_media_empty_cassette"
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:layout_centerHorizontal="true"
-                            android:layout_marginBottom="34dp"
-                            android:src="@drawable/img_bmw_cassette"
-                            android:scaleType="fitCenter"
-                            android:clickable="false"
-                            android:focusable="false"
-                            android:contentDescription="Casetofon BMW" />
-
-                        <!-- Banner / Text la baza cercului -->
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_alignParentBottom="true"
-                            android:layout_marginBottom="36dp"
-                            android:gravity="center"
-                            android:orientation="vertical"
-                            android:clickable="false"
-                            android:focusable="false">
-
-                            <TextView
-                                android:id="@+id/tv_media_empty_title"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="NICIUN PLAYER ACTIV"
-                                android:textColor="@color/bmw_amber"
-                                android:textSize="12sp"
-                                android:textStyle="bold"
-                                android:letterSpacing="0.08"
-                                android:shadowColor="#FF000000"
-                                android:shadowRadius="8"
-                                android:shadowDy="2" />
-
-                            <TextView
-                                android:id="@+id/tv_media_empty_subtitle"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:text="Selectează o piesă sau pornește muzica"
-                                android:textColor="@color/bmw_gray_text"
-                                android:textSize="9.5sp"
-                                android:shadowColor="#FF000000"
-                                android:shadowRadius="6"
-                                android:shadowDy="1" />
-                        </LinearLayout>
-                    </RelativeLayout>
 
                     <View
                         android:id="@+id/youtube_circle_touch_overlay"

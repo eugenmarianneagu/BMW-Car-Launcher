@@ -262,8 +262,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var centerCircle: FrameLayout
     private lateinit var viewCenterBmw: FrameLayout
     private lateinit var viewCenterMedia: FrameLayout
-    private lateinit var layoutMediaEmptyState: RelativeLayout
-    private lateinit var tvMediaEmptySubtitle: TextView
     private lateinit var centerMediaThumbnail: ImageView
     private lateinit var centerMediaSource: TextView
     private lateinit var centerMediaTitle: TextView
@@ -741,8 +739,6 @@ class MainActivity : AppCompatActivity() {
         btnYtBack = findViewById(R.id.btn_yt_back)
         btnYtDockCircle = findViewById(R.id.btn_yt_dock_circle)
 
-        layoutMediaEmptyState = findViewById(R.id.layout_media_empty_state)
-        tvMediaEmptySubtitle = findViewById(R.id.tv_media_empty_subtitle)
         centerMediaThumbnail = findViewById(R.id.center_media_thumbnail)
         centerMediaScrim = findViewById(R.id.center_media_scrim)
         centerMediaInfoContainer = findViewById(R.id.center_media_info_container)
@@ -1655,7 +1651,7 @@ class MainActivity : AppCompatActivity() {
         youtubeCircleTouchOverlay.visibility = View.GONE
         centerMediaScrim.visibility = View.GONE
         centerMediaInfoContainer.visibility = View.GONE
-        updateMediaCenterView()
+        centerMediaThumbnail.visibility = View.VISIBLE
         youtubeWebView?.evaluateJavascript("window.__bmwUserPaused = true; var v = document.querySelector('video'); if (v) v.pause();", null)
         updateNowPlayingBar()
     }
@@ -1689,8 +1685,6 @@ class MainActivity : AppCompatActivity() {
                 }
             } else {
                 controller?.seekToPreviousMediaItem()
-                controller?.prepare()
-                controller?.play()
             }
         }
         btnPlayPause.setOnClickListener {
@@ -1704,14 +1698,8 @@ class MainActivity : AppCompatActivity() {
                             try {
                                 ExternalMediaManager.getActiveMusicController(this)?.transportControls?.pause()
                             } catch (_: Exception) {}
-                            c.prepare()
                             c.play()
                         }
-                    } ?: run {
-                        val intent = Intent(this, RadioService::class.java).apply {
-                            action = RadioService.ACTION_START_PLAY
-                        }
-                        ContextCompat.startForegroundService(this, intent)
                     }
                 }
                 CenterMode.MEDIA -> {
@@ -1764,15 +1752,7 @@ class MainActivity : AppCompatActivity() {
                         try {
                             ExternalMediaManager.getActiveMusicController(this)?.transportControls?.pause()
                         } catch (_: Exception) {}
-                        controller?.let { c ->
-                            c.prepare()
-                            c.play()
-                        } ?: run {
-                            val intent = Intent(this, RadioService::class.java).apply {
-                                action = RadioService.ACTION_START_PLAY
-                            }
-                            ContextCompat.startForegroundService(this, intent)
-                        }
+                        controller?.play()
                     }
                 }
             }
@@ -1812,8 +1792,6 @@ class MainActivity : AppCompatActivity() {
                 }
             } else {
                 controller?.seekToNextMediaItem()
-                controller?.prepare()
-                controller?.play()
             }
         }
 
@@ -1891,28 +1869,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         
-        // L1: RADIO - Comută cercul central pe Radio și pornește redarea (sau deschide lista la apăsare repetată / lungă)
+        // L1: RADIO - Deschide direct lista cu posturile radio (Station Picker Dialog)
         btnLeft1.setOnClickListener {
-            if (currentMode != CenterMode.RADIO) {
-                val prev = currentMode
-                currentMode = CenterMode.RADIO
-                updateCenterModeUI(animateFrom = prev)
-                stopYouTubeWebPlayer()
-                try {
-                    ExternalMediaManager.getActiveMusicController(this)?.transportControls?.pause()
-                } catch (_: Exception) {}
-                controller?.let { c ->
-                    c.prepare()
-                    c.play()
-                } ?: run {
-                    val intent = Intent(this, RadioService::class.java).apply {
-                        action = RadioService.ACTION_START_PLAY
-                    }
-                    ContextCompat.startForegroundService(this, intent)
-                }
-            } else {
-                showStationPickerDialog()
-            }
+            showStationPickerDialog()
         }
         btnLeft1.setOnLongClickListener {
             showStationPickerDialog()
@@ -1983,20 +1942,6 @@ class MainActivity : AppCompatActivity() {
             CenterMode.ENERGY -> CenterMode.BMW
         }
         updateCenterModeUI(animateFrom = previousMode)
-
-        if (currentMode == CenterMode.RADIO) {
-            controller?.let { c ->
-                updateRadioUI(c)
-                if (!c.isPlaying && !ExternalMediaManager.currentData.isPlaying && !(isYouTubeWebMode && isYouTubeWebPlaying)) {
-                    stopYouTubeWebPlayer()
-                    try {
-                        ExternalMediaManager.getActiveMusicController(this)?.transportControls?.pause()
-                    } catch (_: Exception) {}
-                    c.prepare()
-                    c.play()
-                }
-            }
-        }
 
         if (currentMode == CenterMode.MEDIA && !isYouTubeWebMode) {
             ExternalMediaManager.syncActiveSessions(this)
@@ -2207,14 +2152,6 @@ class MainActivity : AppCompatActivity() {
 
         if (currentMode == CenterMode.NOTIFICATION) {
             updateNotificationCenterView()
-        }
-
-        if (currentMode == CenterMode.MEDIA) {
-            updateMediaCenterView()
-        }
-
-        if (currentMode == CenterMode.RADIO) {
-            controller?.let { updateRadioUI(it) }
         }
 
         when (currentMode) {
@@ -2446,7 +2383,8 @@ class MainActivity : AppCompatActivity() {
 
         // Daca in Cercul Central era afisata cealalta aplicatie, actualizeaza imediat afisajul de jos
         if (!ExternalMediaManager.currentData.packageName.equals(resolvedPkg, ignoreCase = true)) {
-            updateMediaCenterView()
+            centerMediaThumbnail.setImageResource(R.drawable.bmw_logo)
+            centerMediaThumbnail.visibility = View.VISIBLE
             bottomTrackTitle.text = "YouTube Music"
             bottomTrackArtist.text = "Selectează o melodie..."
         }
@@ -2995,23 +2933,15 @@ class MainActivity : AppCompatActivity() {
                     radioOverlayContainer.visibility = View.GONE
                     focusPlayPauseButton()
                     stopYouTubeWebPlayer()
-                    try {
-                        ExternalMediaManager.getActiveMusicController(this@MainActivity)?.transportControls?.pause()
-                    } catch (_: Exception) {}
-                    controller?.let { c ->
-                        c.seekToDefaultPosition(position)
-                        c.prepare()
-                        c.play()
-                    } ?: run {
-                        val intent = Intent(this@MainActivity, RadioService::class.java).apply {
-                            action = RadioService.ACTION_START_PLAY
-                        }
-                        StationManager.saveLastIndex(this@MainActivity, position)
-                        ContextCompat.startForegroundService(this@MainActivity, intent)
+                    controller?.let {
+                        try {
+                            ExternalMediaManager.currentData.mediaController?.transportControls?.pause()
+                        } catch (_: Exception) {}
+                        it.seekToDefaultPosition(position)
+                        it.play()
                     }
-                    val prev = currentMode
                     currentMode = CenterMode.RADIO
-                    updateCenterModeUI(animateFrom = prev)
+                    updateCenterModeUI()
                 }
 
                 return view
@@ -3314,8 +3244,14 @@ class MainActivity : AppCompatActivity() {
                 }
                 centerMediaScrim.visibility = View.GONE
                 centerMediaInfoContainer.visibility = View.GONE
-                updateMediaCenterView()
                 if (data.title.isNotEmpty()) {
+                    if (data.artBitmap != null) {
+                        centerMediaThumbnail.setImageBitmap(data.artBitmap)
+                        centerMediaThumbnail.visibility = View.VISIBLE
+                    } else {
+                        centerMediaThumbnail.setImageResource(R.drawable.bmw_logo)
+                        centerMediaThumbnail.visibility = View.VISIBLE
+                    }
                     if (data.isPlaying) {
                         // Daca un player exterior ruleaza (YouTube sau YouTube Music), opreste radioul
                         controller?.pause()
@@ -3362,12 +3298,6 @@ class MainActivity : AppCompatActivity() {
                 updateRadioUI(ctrl)
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                updateRadioUI(ctrl)
-            }
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                updateRadioUI(ctrl)
-            }
-            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 updateRadioUI(ctrl)
             }
         })
@@ -3599,42 +3529,6 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e("MainActivity", "TTS speak exception: ${e.message}")
             resumeOtherPlayersAfterVoiceMessage()
-        }
-    }
-
-    private fun updateMediaCenterView() {
-        runOnUiThread {
-            if (!::layoutMediaEmptyState.isInitialized) return@runOnUiThread
-            val extData = ExternalMediaManager.currentData
-            val isExtPlaying = extData.isPlaying
-            val isYtPlaying = isYouTubeWebMode && isYouTubeWebPlaying
-            val hasActivePlayingSong = isExtPlaying || isYtPlaying
-
-            if (isYouTubeWebMode && isYouTubeDockedInCircle) {
-                layoutMediaEmptyState.visibility = View.GONE
-                youtubeCircleContainer.visibility = View.VISIBLE
-                centerMediaThumbnail.visibility = View.GONE
-            } else if (hasActivePlayingSong) {
-                layoutMediaEmptyState.visibility = View.GONE
-                youtubeCircleContainer.visibility = View.GONE
-                centerMediaThumbnail.visibility = View.VISIBLE
-                if (extData.artBitmap != null) {
-                    centerMediaThumbnail.setImageBitmap(extData.artBitmap)
-                } else {
-                    centerMediaThumbnail.setImageResource(R.drawable.img_bmw_cassette)
-                }
-            } else {
-                youtubeCircleContainer.visibility = View.GONE
-                centerMediaThumbnail.visibility = View.GONE
-                layoutMediaEmptyState.visibility = View.VISIBLE
-                if (::tvMediaEmptySubtitle.isInitialized) {
-                    tvMediaEmptySubtitle.text = if (extData.title.isNotEmpty()) {
-                        "Apasă Redare sau alege o piesă"
-                    } else {
-                        "Selectează o piesă sau pornește muzica"
-                    }
-                }
-            }
         }
     }
 

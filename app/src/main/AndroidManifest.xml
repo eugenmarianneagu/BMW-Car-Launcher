@@ -184,22 +184,6 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
-        <!-- Widget Cadran Central BMW -->
-        <receiver
-            android:name=".BmwCenterWidgetProvider"
-            android:exported="true"
-            android:label="@string/widget_name">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.bmw.carlauncher.WIDGET_PLAY_PAUSE" />
-                <action android:name="com.bmw.carlauncher.WIDGET_PREV" />
-                <action android:name="com.bmw.carlauncher.WIDGET_NEXT" />
-                <action android:name="com.bmw.carlauncher.WIDGET_OPEN_APP" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/bmw_center_widget_info" />
-        </receiver>
 
     </application>
 </manifest>

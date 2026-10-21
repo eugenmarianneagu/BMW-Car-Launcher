@@ -433,12 +433,6 @@ object ExternalMediaManager {
         currentData = data
         checkAutoReturn(data.packageName, data.title, data.mediaController?.playbackState?.state, data.isPlaying)
         listener?.invoke(data)
-        try {
-            val ctx = appContext ?: WazeNotificationService.instance
-            if (ctx != null) {
-                BmwCenterWidgetProvider.updateAllWidgets(ctx)
-            }
-        } catch (_: Exception) {}
     }
 
     private fun isKnownMediaPackage(pkg: String): Boolean {

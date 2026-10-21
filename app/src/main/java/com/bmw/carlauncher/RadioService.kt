@@ -56,8 +56,6 @@ class RadioService : MediaSessionService() {
     private val stopRadioReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ACTION_STOP_RADIO) {
-                isRadioPlaying = false
-                BmwCenterWidgetProvider.updateAllWidgets(context ?: this@RadioService)
                 if (::player.isInitialized) {
                     player.playWhenReady = false
                     player.pause()
@@ -74,11 +72,6 @@ class RadioService : MediaSessionService() {
         const val ACTION_RESTART_STANDBY = "com.bmw.carlauncher.RESTART_STANDBY"
         private const val BG_CHANNEL_ID = "bmw_radio_bg_channel"
         private const val BG_NOTIF_ID = 2002
-        var isRadioPlaying: Boolean = false
-        var currentStationName: String = ""
-        var currentTrackTitle: String = ""
-        var currentTrackArtist: String = ""
-        var currentStationBitmap: Bitmap? = null
 
         fun scheduleRestart(context: Context) {
             try {
@@ -130,20 +123,12 @@ class RadioService : MediaSessionService() {
         loadPlaylist(autoPlay = isCarConnected)
 
         player.addListener(object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                isRadioPlaying = isPlaying
-                BmwCenterWidgetProvider.updateAllWidgets(this@RadioService)
-            }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 val index = player.currentMediaItemIndex
                 if (index in stations.indices) {
-                    currentStationName = stations[index].name
-                    currentTrackArtist = stations[index].name
-                    currentTrackTitle = stations[index].genre
                     StationManager.saveLastIndex(this@RadioService, index)
                     fetchOrGenerateLogo(index, stations[index])
                 }
-                BmwCenterWidgetProvider.updateAllWidgets(this@RadioService)
             }
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
@@ -216,15 +201,13 @@ class RadioService : MediaSessionService() {
         ensureForegroundStandby()
 
         if (intent?.action == ACTION_START_PLAY) {
-            val lastIndex = StationManager.getLastIndex(this)
             if (player.mediaItemCount == 0) {
                 loadPlaylist(autoPlay = true)
             } else {
-                if (lastIndex in 0 until player.mediaItemCount && player.currentMediaItemIndex != lastIndex) {
-                    player.seekTo(lastIndex, C.TIME_UNSET)
-                }
                 player.playWhenReady = true
-                player.prepare()
+                if (player.playbackState == Player.STATE_IDLE) {
+                    player.prepare()
+                }
                 player.play()
             }
         } else if (intent?.action == ACTION_STOP_RADIO) {
@@ -306,10 +289,6 @@ class RadioService : MediaSessionService() {
             displayTitle = rawTitle
         }
 
-        currentTrackTitle = displayTitle
-        currentTrackArtist = displayArtist
-        BmwCenterWidgetProvider.updateAllWidgets(this@RadioService)
-
         val currentItem = player.getMediaItemAt(index)
         val updatedMeta = currentItem.mediaMetadata.buildUpon()
             .setTitle(displayTitle)
@@ -381,8 +360,6 @@ class RadioService : MediaSessionService() {
                     bmp.compress(Bitmap.CompressFormat.PNG, 90, stream)
                     val bytes = stream.toByteArray()
                     artworkCache[index] = bytes
-                    currentStationBitmap = bmp
-                    BmwCenterWidgetProvider.updateAllWidgets(this@RadioService)
                     mainExecutor.execute {
                         if (index < player.mediaItemCount) {
                             val currentItem = player.getMediaItemAt(index)
