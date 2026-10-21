@@ -826,11 +826,13 @@ class MainActivity : AppCompatActivity() {
         btnNotifAction.isFocusable = true
         btnNotifAction.isFocusableInTouchMode = true
         btnNotifAction.isClickable = true
+        btnNotifAction.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
         btnNotifAction.enableInstantClickOnTouch()
 
         btnNotifSpeak.isFocusable = true
         btnNotifSpeak.isFocusableInTouchMode = true
         btnNotifSpeak.isClickable = true
+        btnNotifSpeak.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
         btnNotifSpeak.enableInstantClickOnTouch()
 
         btnNotifAction.setOnClickListener {
@@ -3613,6 +3615,10 @@ class MainActivity : AppCompatActivity() {
         activeNotification = nextNotif
         VoiceMessagePlayer.stop()
 
+        val focusedBefore = currentFocus
+        val keepNext = ::btnNotifNext.isInitialized && (focusedBefore == btnNotifNext || btnNotifNext.hasFocus())
+        val keepPrev = ::btnNotifPrev.isInitialized && (focusedBefore == btnNotifPrev || btnNotifPrev.hasFocus())
+
         val width = (viewCenterNotification.width.toFloat().takeIf { it > 0f } ?: 400f)
         val slideOutDistance = width * if (direction < 0) -0.35f else 0.35f
 
@@ -3623,6 +3629,11 @@ class MainActivity : AppCompatActivity() {
             .setDuration(110)
             .withEndAction {
                 bindNotificationData(nextNotif)
+                if (keepNext && ::btnNotifNext.isInitialized && btnNotifNext.visibility == View.VISIBLE) {
+                    btnNotifNext.requestFocus()
+                } else if (keepPrev && ::btnNotifPrev.isInitialized && btnNotifPrev.visibility == View.VISIBLE) {
+                    btnNotifPrev.requestFocus()
+                }
                 viewCenterNotification.translationX = -slideOutDistance
                 viewCenterNotification.alpha = 0f
                 viewCenterNotification.animate()
@@ -3745,7 +3756,10 @@ class MainActivity : AppCompatActivity() {
         btnNotifAction.isFocusable = true
         btnNotifAction.isFocusableInTouchMode = true
         btnNotifAction.post {
-            btnNotifAction.requestFocus()
+            val cur = currentFocus
+            if (cur == null || (cur != btnNotifNext && cur != btnNotifPrev)) {
+                btnNotifAction.requestFocus()
+            }
         }
     }
 
@@ -4098,15 +4112,21 @@ class MainActivity : AppCompatActivity() {
         return false
     }
 
+    private fun getNotificationFocusableViews(): List<View> {
+        val views = mutableListOf<View>()
+        if (::btnNotifPrev.isInitialized && btnNotifPrev.visibility == View.VISIBLE) views.add(btnNotifPrev)
+        if (::btnNotifAction.isInitialized && btnNotifAction.visibility == View.VISIBLE) views.add(btnNotifAction)
+        if (::btnNotifSpeak.isInitialized && btnNotifSpeak.visibility == View.VISIBLE) views.add(btnNotifSpeak)
+        if (::btnNotifNext.isInitialized && btnNotifNext.visibility == View.VISIBLE) views.add(btnNotifNext)
+        if (::btnNotifClose.isInitialized && btnNotifClose.visibility == View.VISIBLE) views.add(btnNotifClose)
+        return views
+    }
+
     private fun getOverlayFocusableViews(overlay: ViewGroup): List<View> {
         val views = mutableListOf<View>()
         when (overlay) {
             viewCenterNotification -> {
-                if (::btnNotifPrev.isInitialized && btnNotifPrev.visibility == View.VISIBLE) views.add(btnNotifPrev)
-                if (::btnNotifNext.isInitialized && btnNotifNext.visibility == View.VISIBLE) views.add(btnNotifNext)
-                if (::btnNotifAction.isInitialized && btnNotifAction.visibility == View.VISIBLE) views.add(btnNotifAction)
-                if (::btnNotifSpeak.isInitialized && btnNotifSpeak.visibility == View.VISIBLE) views.add(btnNotifSpeak)
-                if (::btnNotifClose.isInitialized && btnNotifClose.visibility == View.VISIBLE) views.add(btnNotifClose)
+                views.addAll(getNotificationFocusableViews())
             }
             favoritesOverlayContainer -> {
                 if (::btnCloseFavorites.isInitialized && btnCloseFavorites.visibility == View.VISIBLE) views.add(btnCloseFavorites)
@@ -4306,24 +4326,32 @@ class MainActivity : AppCompatActivity() {
         val activeOverlay = getActiveSecondaryOverlay()
 
         if (event.keyCode == KeyEvent.KEYCODE_TAB && event.action == KeyEvent.ACTION_DOWN) {
-            if (currentMode == CenterMode.NOTIFICATION) {
-                val unreadList = CarNotificationHub.unreadNotifications
-                if (unreadList.isNotEmpty()) {
-                    if (event.isShiftPressed) {
-                        btnNotifPrev.isPressed = true
-                        btnNotifPrev.postDelayed({ btnNotifPrev.isPressed = false }, 180)
-                        navigateToPreviousNotification()
-                    } else {
-                        btnNotifNext.isPressed = true
-                        btnNotifNext.postDelayed({ btnNotifNext.isPressed = false }, 180)
-                        navigateToNextNotification()
-                    }
-                    return true
-                }
-            }
-
             if (activeOverlay != null) {
                 return handleOverlayTabNavigation(activeOverlay, event.isShiftPressed)
+            }
+
+            if (currentMode == CenterMode.NOTIFICATION) {
+                val notifViews = getNotificationFocusableViews()
+                if (notifViews.isNotEmpty()) {
+                    val isShift = event.isShiftPressed
+                    val current = currentFocus
+                    val currentIndex = notifViews.indexOfFirst { it == current || it.hasFocus() || isViewDescendantOf(current ?: it, it) }
+                    val nextIndex = if (currentIndex < 0) {
+                        if (isShift) notifViews.size - 1 else {
+                            val actionIdx = notifViews.indexOf(btnNotifAction)
+                            if (actionIdx >= 0) actionIdx else 0
+                        }
+                    } else if (isShift) {
+                        if (currentIndex <= 0) notifViews.size - 1 else currentIndex - 1
+                    } else {
+                        if (currentIndex >= notifViews.size - 1) 0 else currentIndex + 1
+                    }
+                    val target = notifViews[nextIndex]
+                    target.isFocusable = true
+                    target.isFocusableInTouchMode = true
+                    target.requestFocus()
+                    return true
+                }
             }
 
             val isShift = event.isShiftPressed
@@ -4367,6 +4395,20 @@ class MainActivity : AppCompatActivity() {
                     }
                     clickTarget.performClick()
                     return true
+                }
+            }
+
+            if (currentMode == CenterMode.NOTIFICATION) {
+                val focused = currentFocus
+                if (focused != null) {
+                    val notifViews = getNotificationFocusableViews()
+                    val target = notifViews.firstOrNull { it == focused || it.hasFocus() || isViewDescendantOf(focused, it) }
+                    if (target != null) {
+                        target.isPressed = true
+                        target.postDelayed({ target.isPressed = false }, 180)
+                        target.performClick()
+                        return true
+                    }
                 }
             }
 
