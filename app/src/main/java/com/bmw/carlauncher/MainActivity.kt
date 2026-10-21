@@ -393,7 +393,7 @@ class MainActivity : AppCompatActivity() {
         if (!isCarConnectedState && now - lastDisconnectTimestamp < 3000L) {
             return
         }
-        Log.i("MainActivity", "handleCarDisconnected ($reason): oprire audio, background și blocare ecran")
+        Log.i("MainActivity", "handleCarDisconnected ($reason): oprire audio, blocare ecran și background")
         isCarConnectedState = false
         lastDisconnectTimestamp = now
         ExternalMediaManager.cancelAutoReturn()
@@ -404,9 +404,14 @@ class MainActivity : AppCompatActivity() {
             clearShowWhenLocked()
         } catch (_: Exception) {}
 
+        // 1. Blochează ecranul PRIMUL (cât timp aplicația mai are încă focus pe ecran)
+        BMWAccessibilityService.lockScreen()
+
+        // 2. Imediat după, duce aplicația în background și revine pe Home Screen
         try {
             moveTaskToBack(true)
         } catch (_: Exception) {}
+        
         val homeDone = BMWAccessibilityService.goToHomeScreen()
         if (!homeDone) {
             try {
@@ -417,12 +422,6 @@ class MainActivity : AppCompatActivity() {
                 startActivity(homeIntent)
             } catch (_: Exception) {}
         }
-
-        Handler(Looper.getMainLooper()).postDelayed({
-            if (!isCarConnectedState) {
-                BMWAccessibilityService.lockScreen()
-            }
-        }, 500L)
     }
 
     private val bluetoothReceiver = object : BroadcastReceiver() {
