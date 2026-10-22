@@ -123,6 +123,21 @@ class RadioService : MediaSessionService() {
         loadPlaylist(autoPlay = isCarConnected)
 
         player.addListener(object : Player.Listener {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady) {
+                    // Golim complet bufferul radio când playerul este oprit / pe pauză
+                    if (player.playbackState != Player.STATE_IDLE) {
+                        player.stop()
+                    }
+                } else {
+                    // Când se reia redarea și playerul a fost oprit (STATE_IDLE), reîncărcăm poziția live curentă
+                    if (player.playbackState == Player.STATE_IDLE && player.mediaItemCount > 0) {
+                        player.seekTo(player.currentMediaItemIndex, C.TIME_UNSET)
+                        player.prepare()
+                    }
+                }
+            }
+
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 val index = player.currentMediaItemIndex
                 if (index in stations.indices) {

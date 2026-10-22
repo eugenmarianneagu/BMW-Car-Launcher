@@ -41,6 +41,7 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.media.AudioAttributes
 import android.media.AudioManager
+import android.media.session.PlaybackState
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
@@ -851,8 +852,10 @@ class MainActivity : AppCompatActivity() {
                 if (VoiceMessagePlayer.isPlaying()) {
                     VoiceMessagePlayer.pause()
                 } else if (VoiceMessagePlayer.getCurrentFile() != null) {
+                    pauseOtherPlayersForVoiceMessage()
                     VoiceMessagePlayer.resume()
                 } else {
+                    pauseOtherPlayersForVoiceMessage()
                     playVoiceMessageOrFallback(notif)
                 }
             } else {
@@ -1935,6 +1938,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun cycleCenterMode() {
         val previousMode = currentMode
+        if (previousMode == CenterMode.NOTIFICATION) {
+            if (VoiceMessagePlayer.isPlaying() || VoiceMessagePlayer.getCurrentFile() != null) {
+                VoiceMessagePlayer.stop()
+                resumeOtherPlayersAfterVoiceMessage()
+            }
+        }
         currentMode = when (currentMode) {
             CenterMode.BMW -> CenterMode.NOTIFICATION
             CenterMode.NOTIFICATION -> CenterMode.MEDIA
@@ -3696,7 +3705,10 @@ class MainActivity : AppCompatActivity() {
 
         val nextNotif = unreadList[targetIndex]
         activeNotification = nextNotif
-        VoiceMessagePlayer.stop()
+        if (VoiceMessagePlayer.isPlaying() || VoiceMessagePlayer.getCurrentFile() != null) {
+            VoiceMessagePlayer.stop()
+            resumeOtherPlayersAfterVoiceMessage()
+        }
 
         val focusedBefore = currentFocus
         val keepNext = ::btnNotifNext.isInitialized && (focusedBefore == btnNotifNext || btnNotifNext.hasFocus())
@@ -3734,7 +3746,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun dismissCurrentNotificationWithAnim() {
         val current = activeNotification ?: return
-        VoiceMessagePlayer.stop()
+        if (VoiceMessagePlayer.isPlaying() || VoiceMessagePlayer.getCurrentFile() != null) {
+            VoiceMessagePlayer.stop()
+            resumeOtherPlayersAfterVoiceMessage()
+        }
 
         viewCenterNotification.animate().cancel()
         viewCenterNotification.animate()
@@ -3876,13 +3891,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun pauseOtherPlayersForVoiceMessage() {
-        wasRadioPlayingBeforeVoice = controller?.isPlaying == true
+        if (!wasRadioPlayingBeforeVoice && !wasYouTubePlayingBeforeVoice && !wasExternalMediaPlayingBeforeVoice) {
+            wasRadioPlayingBeforeVoice = controller?.isPlaying == true
+            wasYouTubePlayingBeforeVoice = isYouTubeWebMode && isYouTubeWebPlaying
+            val extCtrl = ExternalMediaManager.getActiveMusicController(this)
+            wasExternalMediaPlayingBeforeVoice = ExternalMediaManager.currentData.isPlaying ||
+                    (extCtrl?.playbackState?.state == PlaybackState.STATE_PLAYING)
+            Log.d("MainActivity", "pauseOtherPlayers: radio=$wasRadioPlayingBeforeVoice, yt=$wasYouTubePlayingBeforeVoice, ext=$wasExternalMediaPlayingBeforeVoice")
+        }
+
         if (wasRadioPlayingBeforeVoice) {
             controller?.pause()
             Log.d("MainActivity", "Radio intern oprit temporar pentru mesaj vocal/audio")
         }
 
-        wasYouTubePlayingBeforeVoice = isYouTubeWebMode && isYouTubeWebPlaying
         if (wasYouTubePlayingBeforeVoice) {
             youtubeWebView?.evaluateJavascript("window.__bmwUserPaused = true; var v = document.querySelector('video'); if (v) v.pause();", null)
             isYouTubeWebPlaying = false
@@ -3890,7 +3912,6 @@ class MainActivity : AppCompatActivity() {
             Log.d("MainActivity", "YouTube oprit temporar pentru mesaj vocal/audio")
         }
 
-        wasExternalMediaPlayingBeforeVoice = ExternalMediaManager.currentData.isPlaying
         if (wasExternalMediaPlayingBeforeVoice) {
             try {
                 val mc = ExternalMediaManager.getActiveMusicController(this)
@@ -3909,9 +3930,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun resumeOtherPlayersAfterVoiceMessage() {
+        Log.d("MainActivity", "resumeOtherPlayers: radio=$wasRadioPlayingBeforeVoice, yt=$wasYouTubePlayingBeforeVoice, ext=$wasExternalMediaPlayingBeforeVoice")
         if (wasRadioPlayingBeforeVoice) {
             wasRadioPlayingBeforeVoice = false
-            controller?.play()
+            if (controller != null) {
+                controller?.play()
+            } else {
+                val serviceIntent = Intent(this, RadioService::class.java).apply {
+                    action = RadioService.ACTION_START_PLAY
+                }
+                startService(serviceIntent)
+            }
             Log.d("MainActivity", "Radio intern reluat dupa mesaj vocal")
         } else if (wasYouTubePlayingBeforeVoice) {
             wasYouTubePlayingBeforeVoice = false
@@ -3925,11 +3954,16 @@ class MainActivity : AppCompatActivity() {
                 val mc = ExternalMediaManager.getActiveMusicController(this)
                 if (mc != null) {
                     mc.transportControls.play()
-                } else {
-                    val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-                    am?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY))
-                    am?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY))
                 }
+                Handler(Looper.getMainLooper()).postDelayed({
+                    val isPlayingNow = ExternalMediaManager.currentData.isPlaying ||
+                            (ExternalMediaManager.getActiveMusicController(this)?.playbackState?.state == PlaybackState.STATE_PLAYING)
+                    if (!isPlayingNow) {
+                        val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                        am?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY))
+                        am?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY))
+                    }
+                }, 150L)
             } catch (e: Exception) {
                 Log.w("MainActivity", "Eroare reluare media externa: ${e.message}")
             }
@@ -3951,6 +3985,7 @@ class MainActivity : AppCompatActivity() {
 
         val voiceFile = VoiceMessagePlayer.findLatestVoiceNote(notif.packageName, notif.timestamp)
         if (voiceFile != null && voiceFile.exists()) {
+            pauseOtherPlayersForVoiceMessage()
             VoiceMessagePlayer.play(voiceFile)
         } else if (notif.playActionIntent != null) {
             try {
@@ -3965,6 +4000,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     ActivityOptions.makeBasic().toBundle()
                 }
+                pauseOtherPlayersForVoiceMessage()
                 notif.playActionIntent.send(this, 0, null, null, null, null, optionsBundle)
             } catch (e: Exception) {
                 Log.e("MainActivity", "Eroare playActionIntent: ${e.message}")
@@ -4499,6 +4535,29 @@ class MainActivity : AppCompatActivity() {
         val activeOverlay = getActiveSecondaryOverlay()
 
         if (event.keyCode == KeyEvent.KEYCODE_TAB && event.action == KeyEvent.ACTION_DOWN) {
+            val isCallActiveOrOutgoing = ::callOverlayContainer.isInitialized &&
+                    callOverlayContainer.visibility == View.VISIBLE &&
+                    ::btnCallHangup.isInitialized &&
+                    btnCallHangup.visibility == View.VISIBLE &&
+                    (!::callRingingActions.isInitialized || callRingingActions.visibility != View.VISIBLE)
+
+            if (isCallActiveOrOutgoing) {
+                val isShift = event.isShiftPressed
+                val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                val direction = if (isShift) AudioManager.ADJUST_LOWER else AudioManager.ADJUST_RAISE
+                try {
+                    am?.adjustStreamVolume(AudioManager.STREAM_VOICE_CALL, direction, AudioManager.FLAG_SHOW_UI)
+                } catch (e: Exception) {
+                    try {
+                        am?.adjustSuggestedStreamVolume(direction, AudioManager.USE_DEFAULT_STREAM_TYPE, AudioManager.FLAG_SHOW_UI)
+                    } catch (_: Exception) {}
+                }
+                btnCallHangup.isFocusable = true
+                btnCallHangup.isFocusableInTouchMode = true
+                btnCallHangup.requestFocus()
+                return true
+            }
+
             if (activeOverlay != null) {
                 return handleOverlayTabNavigation(activeOverlay, event.isShiftPressed)
             }
@@ -4744,7 +4803,12 @@ class MainActivity : AppCompatActivity() {
         callTimerHandler.postDelayed(callTimerRunnable, 1000)
 
         callOverlayContainer.visibility = View.VISIBLE
+        btnCallHangup.isFocusable = true
+        btnCallHangup.isFocusableInTouchMode = true
         btnCallHangup.requestFocus()
+        btnCallHangup.post {
+            btnCallHangup.requestFocus()
+        }
     }
 
     fun dismissCallUI() {
@@ -4779,7 +4843,12 @@ class MainActivity : AppCompatActivity() {
         btnCallHangup.visibility = View.VISIBLE
         callOverlayContainer.visibility = View.VISIBLE
 
+        btnCallHangup.isFocusable = true
+        btnCallHangup.isFocusableInTouchMode = true
         btnCallHangup.requestFocus()
+        btnCallHangup.post {
+            btnCallHangup.requestFocus()
+        }
     }
 
     private fun showRecentCallsOverlay() {
