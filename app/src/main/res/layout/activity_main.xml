@@ -697,6 +697,44 @@
                         android:clickable="true"
                         android:focusable="false"
                         android:visibility="gone" />
+
+                    <!-- Discreet Active Player Badge Overlay -->
+                    <LinearLayout
+                        android:id="@+id/center_media_player_badge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="bottom|center_horizontal"
+                        android:layout_marginBottom="26dp"
+                        android:background="@drawable/bg_center_media_player_badge"
+                        android:clickable="true"
+                        android:focusable="false"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="10dp"
+                        android:paddingTop="4dp"
+                        android:paddingEnd="12dp"
+                        android:paddingBottom="4dp"
+                        android:visibility="gone">
+
+                        <ImageView
+                            android:id="@+id/iv_center_media_player_icon"
+                            android:layout_width="14dp"
+                            android:layout_height="14dp"
+                            android:layout_marginEnd="6dp"
+                            android:scaleType="fitCenter"
+                            android:src="@drawable/ic_yt_music_badge" />
+
+                        <TextView
+                            android:id="@+id/tv_center_media_player_name"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:letterSpacing="0.08"
+                            android:singleLine="true"
+                            android:text="YT MUSIC"
+                            android:textColor="@color/bmw_white"
+                            android:textSize="10.5sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
                 </FrameLayout>
 
                 <!-- 1. BMW LOGO VIEW (Default) -->

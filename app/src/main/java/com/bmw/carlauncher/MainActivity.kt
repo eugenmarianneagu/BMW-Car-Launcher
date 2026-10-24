@@ -274,6 +274,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var centerMediaSource: TextView
     private lateinit var centerMediaTitle: TextView
     private lateinit var centerMediaArtist: TextView
+    private lateinit var centerMediaPlayerBadge: View
+    private lateinit var ivCenterMediaPlayerIcon: ImageView
+    private lateinit var tvCenterMediaPlayerName: TextView
     private var lastKnownLocation: Location? = null
 
     private lateinit var viewCenterRadio: LinearLayout
@@ -769,6 +772,9 @@ class MainActivity : AppCompatActivity() {
         centerMediaSource = findViewById(R.id.center_media_source)
         centerMediaTitle = findViewById(R.id.center_media_title)
         centerMediaArtist = findViewById(R.id.center_media_artist)
+        centerMediaPlayerBadge = findViewById(R.id.center_media_player_badge)
+        ivCenterMediaPlayerIcon = findViewById(R.id.iv_center_media_player_icon)
+        tvCenterMediaPlayerName = findViewById(R.id.tv_center_media_player_name)
 
         initYouTubeWebView()
 
@@ -1014,6 +1020,7 @@ class MainActivity : AppCompatActivity() {
                         centerMediaScrim.visibility = View.GONE
                         centerMediaInfoContainer.visibility = View.GONE
                     }
+                    updateCenterMediaPlayerBadge()
                     updateNowPlayingBar()
                 }
             }
@@ -1026,6 +1033,7 @@ class MainActivity : AppCompatActivity() {
                     if (activeMediaSource == ActiveMediaSource.LOCAL_PLAYER && currentMode == CenterMode.MEDIA && !isYouTubeWebMode) {
                         updatePlayPauseIcon(isPlaying)
                     }
+                    updateCenterMediaPlayerBadge()
                     updateNowPlayingBar()
                 }
             }
@@ -1773,6 +1781,7 @@ class MainActivity : AppCompatActivity() {
         centerMediaThumbnail.visibility = View.VISIBLE
         youtubeWebView?.evaluateJavascript("window.__bmwUserPaused = true; var v = document.querySelector('video'); if (v) v.pause();", null)
         updateNowPlayingBar()
+        updateCenterMediaPlayerBadge()
     }
 
     private fun setupListeners() {
@@ -2013,6 +2022,7 @@ class MainActivity : AppCompatActivity() {
         bottomTrackTitle.setOnClickListener(openCurrentMediaApp)
         bottomTrackArtist.setOnClickListener(openCurrentMediaApp)
         findViewById<View>(R.id.pill_status_right)?.setOnClickListener(openCurrentMediaApp)
+        centerMediaPlayerBadge.setOnClickListener(openCurrentMediaApp)
 
         // Night Mode / Settings / Auto Brightness
         btnNightMode.setOnClickListener {
@@ -2420,6 +2430,50 @@ class MainActivity : AppCompatActivity() {
             }
         }
         updateNowPlayingBar()
+        updateCenterMediaPlayerBadge()
+    }
+
+    private fun updateCenterMediaPlayerBadge() {
+        if (!::centerMediaPlayerBadge.isInitialized) return
+        if (currentMode != CenterMode.MEDIA) {
+            centerMediaPlayerBadge.visibility = View.GONE
+            return
+        }
+
+        when (activeMediaSource) {
+            ActiveMediaSource.LOCAL_PLAYER -> {
+                ivCenterMediaPlayerIcon.setImageResource(R.drawable.ic_music_player_badge)
+                tvCenterMediaPlayerName.text = "MUSIC PLAYER"
+                centerMediaPlayerBadge.visibility = View.VISIBLE
+            }
+            ActiveMediaSource.YOUTUBE_WEB -> {
+                ivCenterMediaPlayerIcon.setImageResource(R.drawable.ic_yt_music_badge)
+                tvCenterMediaPlayerName.text = "YOUTUBE"
+                centerMediaPlayerBadge.visibility = View.VISIBLE
+            }
+            ActiveMediaSource.EXTERNAL_APP -> {
+                val extData = ExternalMediaManager.currentData
+                val isYtMusic = extData.packageName.contains("youtube.music") ||
+                        extData.sourceName.contains("YouTube", ignoreCase = true)
+                val isSpotify = extData.packageName.contains("spotify") ||
+                        extData.sourceName.contains("Spotify", ignoreCase = true)
+
+                if (isYtMusic) {
+                    ivCenterMediaPlayerIcon.setImageResource(R.drawable.ic_yt_music_badge)
+                    tvCenterMediaPlayerName.text = "YT MUSIC"
+                } else if (isSpotify) {
+                    ivCenterMediaPlayerIcon.setImageResource(R.drawable.ic_music_player_badge)
+                    tvCenterMediaPlayerName.text = "SPOTIFY"
+                } else if (extData.sourceName.isNotEmpty()) {
+                    ivCenterMediaPlayerIcon.setImageResource(R.drawable.ic_music_player_badge)
+                    tvCenterMediaPlayerName.text = extData.sourceName.uppercase()
+                } else {
+                    ivCenterMediaPlayerIcon.setImageResource(R.drawable.ic_yt_music_badge)
+                    tvCenterMediaPlayerName.text = "YT MUSIC"
+                }
+                centerMediaPlayerBadge.visibility = View.VISIBLE
+            }
+        }
     }
 
     private fun updatePlayPauseIcon(isPlaying: Boolean) {
@@ -3939,6 +3993,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 updateNowPlayingBar()
+                updateCenterMediaPlayerBadge()
             }
         }
 
@@ -3997,6 +4052,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         updateNowPlayingBar()
+        updateCenterMediaPlayerBadge()
     }
 
     override fun onStop() {
