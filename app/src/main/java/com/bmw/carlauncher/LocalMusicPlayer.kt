@@ -54,7 +54,7 @@ object LocalMusicPlayer {
         get() = exoPlayer?.shuffleModeEnabled == true
 
     val repeatMode: Int
-        get() = exoPlayer?.repeatMode ?: Player.REPEAT_MODE_OFF
+        get() = exoPlayer?.repeatMode ?: Player.REPEAT_MODE_ALL
 
     fun addListener(listener: PlaybackListener) {
         if (!listeners.contains(listener)) {
@@ -82,6 +82,8 @@ object LocalMusicPlayer {
             .setHandleAudioBecomingNoisy(true)
             .build()
 
+        player.repeatMode = Player.REPEAT_MODE_ALL
+
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 notifyPlaybackStateChanged(isPlaying)
@@ -93,7 +95,12 @@ object LocalMusicPlayer {
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) {
-                    notifyPlaybackStateChanged(false)
+                    if (currentQueue.isNotEmpty()) {
+                        player.seekTo(0, 0L)
+                        player.play()
+                    } else {
+                        notifyPlaybackStateChanged(false)
+                    }
                 }
             }
         })
@@ -204,8 +211,9 @@ object LocalMusicPlayer {
         val player = exoPlayer ?: return
         if (player.hasNextMediaItem()) {
             player.seekToNextMediaItem()
-        } else if (player.repeatMode == Player.REPEAT_MODE_ALL && currentQueue.isNotEmpty()) {
+        } else if (currentQueue.isNotEmpty()) {
             player.seekToDefaultPosition(0)
+            player.play()
         }
     }
 
@@ -217,6 +225,7 @@ object LocalMusicPlayer {
             player.seekToPreviousMediaItem()
         } else if (currentQueue.isNotEmpty()) {
             player.seekToDefaultPosition(currentQueue.size - 1)
+            player.play()
         }
     }
 
@@ -228,11 +237,11 @@ object LocalMusicPlayer {
     }
 
     fun cycleRepeatMode(): Int {
-        val player = exoPlayer ?: return Player.REPEAT_MODE_OFF
+        val player = exoPlayer ?: return Player.REPEAT_MODE_ALL
         val nextMode = when (player.repeatMode) {
-            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
             Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
-            else -> Player.REPEAT_MODE_OFF
+            Player.REPEAT_MODE_ONE -> Player.REPEAT_MODE_OFF
+            else -> Player.REPEAT_MODE_ALL
         }
         player.repeatMode = nextMode
         return nextMode

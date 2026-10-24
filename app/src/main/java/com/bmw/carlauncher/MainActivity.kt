@@ -1008,6 +1008,8 @@ class MainActivity : AppCompatActivity() {
                             centerMediaThumbnail.setImageResource(R.drawable.ic_no_player_active)
                         }
                         centerMediaThumbnail.visibility = View.VISIBLE
+                        centerMediaScrim.visibility = View.GONE
+                        centerMediaInfoContainer.visibility = View.GONE
                     }
                     updateNowPlayingBar()
                 }
@@ -2383,6 +2385,8 @@ class MainActivity : AppCompatActivity() {
                         centerMediaThumbnail.setImageResource(R.drawable.ic_no_player_active)
                     }
                     centerMediaThumbnail.visibility = View.VISIBLE
+                    centerMediaScrim.visibility = View.GONE
+                    centerMediaInfoContainer.visibility = View.GONE
                 }
             }
             else -> {
@@ -2763,10 +2767,22 @@ class MainActivity : AppCompatActivity() {
                 view.setOnClickListener {
                     controller?.pause()
                     stopYouTubeWebPlayer()
+                    isYouTubeWebMode = false
                     LocalMusicPlayer.playPlaylist(this@MainActivity, playlist, position)
+                    val prevMode = currentMode
                     currentMode = CenterMode.MEDIA
-                    updateCenterModeUI()
-                    notifyDataSetChanged()
+                    updateCenterModeUI(if (prevMode != CenterMode.MEDIA) prevMode else null)
+
+                    val trackToPlay = tracks.getOrNull(position)
+                    if (trackToPlay != null) {
+                        val bmp = LocalMusicPlayer.loadArtwork(this@MainActivity, trackToPlay)
+                        centerMediaThumbnail.setImageBitmap(bmp)
+                        centerMediaThumbnail.visibility = View.VISIBLE
+                        centerMediaScrim.visibility = View.GONE
+                        centerMediaInfoContainer.visibility = View.GONE
+                    }
+                    dismissAllOverlays()
+                    focusPlayPauseButton()
                 }
 
                 return view
