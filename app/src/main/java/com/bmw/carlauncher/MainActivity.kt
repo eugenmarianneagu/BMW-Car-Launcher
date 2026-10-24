@@ -1724,16 +1724,47 @@ class MainActivity : AppCompatActivity() {
                         }
                         return@setOnClickListener
                     }
-                    val isCurrentlyPlaying = isCurrentlyPlayingState
                     val mc = ExternalMediaManager.getActiveMusicController(this)
-                    if (mc != null) {
-                        if (isCurrentlyPlaying) mc.transportControls.pause() else mc.transportControls.play()
-                    } else {
+                    val pbState = mc?.playbackState?.state
+                    val isActuallyPlaying = (pbState == PlaybackState.STATE_PLAYING || pbState == PlaybackState.STATE_BUFFERING)
+
+                    if (isActuallyPlaying) {
+                        mc?.transportControls?.pause()
                         val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-                        am?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
-                        am?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
+                        am?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE))
+                        am?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PAUSE))
+                        updatePlayPauseIcon(false)
+                    } else {
+                        val errorMsg = mc?.playbackState?.errorMessage?.toString() ?: ""
+                        val isYtMusicUpgradeError = mc != null &&
+                                mc.packageName.contains("youtube.music", ignoreCase = true) &&
+                                (pbState == PlaybackState.STATE_ERROR || errorMsg.contains("upgrade", ignoreCase = true))
+
+                        if (isYtMusicUpgradeError) {
+                            Toast.makeText(
+                                this,
+                                "YouTube Music gratuit necesită redare pe ecran (sau Premium/ReVanced pt fundal). Se deschide...",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            val launchIntent = packageManager.getLaunchIntentForPackage(mc?.packageName ?: "")
+                            if (launchIntent != null) {
+                                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                startActivity(launchIntent)
+                            }
+                        } else {
+                            if (mc != null) {
+                                mc.transportControls.play()
+                            }
+                            val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                            am?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY))
+                            am?.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY))
+                            updatePlayPauseIcon(true)
+                            if (mc != null) {
+                                window.decorView.postDelayed({ ExternalMediaManager.syncFromController(mc) }, 300L)
+                                window.decorView.postDelayed({ ExternalMediaManager.syncFromController(mc) }, 800L)
+                            }
+                        }
                     }
-                    updatePlayPauseIcon(!isCurrentlyPlaying)
                 }
                 else -> {
                     if (controller?.isPlaying == true) {
@@ -1807,6 +1838,40 @@ class MainActivity : AppCompatActivity() {
         btnVolumeUp.setOnClickListener {
             adjustVolume(AudioManager.ADJUST_RAISE)
         }
+
+        val openCurrentMediaApp = View.OnClickListener {
+            val pkg = ExternalMediaManager.currentData.packageName.ifEmpty {
+                ExternalMediaManager.preferredPackage
+            }
+            if (isYouTubeWebMode) {
+                if (currentMode != CenterMode.MEDIA) {
+                    currentMode = CenterMode.MEDIA
+                    updateCenterModeUI()
+                }
+                openYouTubeFullscreen()
+            } else if (pkg.isNotEmpty() && (currentMode == CenterMode.MEDIA || controller?.isPlaying != true)) {
+                if (currentMode != CenterMode.MEDIA) {
+                    currentMode = CenterMode.MEDIA
+                    updateCenterModeUI()
+                }
+                val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(launchIntent)
+                }
+            } else if (currentMode == CenterMode.RADIO || controller?.isPlaying == true) {
+                if (currentMode != CenterMode.RADIO) {
+                    currentMode = CenterMode.RADIO
+                    updateCenterModeUI()
+                }
+                showStationPickerDialog()
+            } else {
+                showMusicAppPickerDialog()
+            }
+        }
+        bottomTrackTitle.setOnClickListener(openCurrentMediaApp)
+        bottomTrackArtist.setOnClickListener(openCurrentMediaApp)
+        findViewById<View>(R.id.pill_status_right)?.setOnClickListener(openCurrentMediaApp)
 
         // Night Mode / Settings / Auto Brightness
         btnNightMode.setOnClickListener {
@@ -2275,10 +2340,13 @@ class MainActivity : AppCompatActivity() {
     private fun showMusicAppPickerDialog() {
         val options = mutableListOf<MusicOption>()
 
+        val hasReVancedYtMusic = packageManager.getLaunchIntentForPackage("app.revanced.android.apps.youtube.music") != null ||
+                packageManager.getLaunchIntentForPackage("com.vanced.android.apps.youtube.music") != null
+
         // 1. YouTube Music
         options.add(MusicOption(
             title = "YouTube Music",
-            desc = "Redare audio sincronizată în Cercul Central",
+            desc = if (hasReVancedYtMusic) "Redare audio sincronizată în Cercul Central" else "Streaming audio (necesită Premium sau ReVanced pt fundal)",
             iconRes = R.drawable.ic_gauge_music,
             action = { launchSelectedMediaApp(isYouTubeMusic = true) }
         ))

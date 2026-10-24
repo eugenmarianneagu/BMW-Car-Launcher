@@ -29,6 +29,7 @@ import android.service.notification.StatusBarNotification
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.widget.Toast
 import java.util.Locale
 
 data class WazeNavData(
@@ -291,37 +292,46 @@ object ExternalMediaManager {
         } catch (_: Exception) {}
 
         // 4. Fallback FullScreenIntent notification (garanteaza revenirea rapida)
-        try {
-            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            if (nm != null) {
-                val channelId = "bmw_return_channel"
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    val channel = NotificationChannel(
-                        channelId,
-                        "BMW Auto Return",
-                        NotificationManager.IMPORTANCE_HIGH
-                    )
-                    nm.createNotificationChannel(channel)
-                }
-                val pi = PendingIntent.getActivity(
-                    ctx, 998, intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-                val notif = NotificationCompat.Builder(ctx, channelId)
-                    .setSmallIcon(R.drawable.ic_launcher)
-                    .setContentTitle("BMW Car Launcher")
-                    .setPriority(NotificationCompat.PRIORITY_MAX)
-                    .setCategory(NotificationCompat.CATEGORY_CALL)
-                    .setFullScreenIntent(pi, true)
-                    .setAutoCancel(true)
-                    .setTimeoutAfter(1500L)
-                    .build()
-                nm.notify(998, notif)
-                mainHandler.postDelayed({
-                    try { nm.cancel(998) } catch (_: Exception) {}
-                }, 1200L)
+        // Se executa doar ca rezerva daca activitatea nu a revenit deja in prim-plan
+        mainHandler.postDelayed({
+            if (!MainActivity.isInForeground) {
+                try {
+                    val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                    if (nm != null) {
+                        val channelId = "bmw_return_channel"
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            val channel = NotificationChannel(
+                                channelId,
+                                "BMW Auto Return",
+                                NotificationManager.IMPORTANCE_HIGH
+                            ).apply {
+                                setSound(null, null)
+                                enableVibration(false)
+                            }
+                            nm.createNotificationChannel(channel)
+                        }
+                        val pi = PendingIntent.getActivity(
+                            ctx, 998, intent,
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                        )
+                        val notif = NotificationCompat.Builder(ctx, channelId)
+                            .setSmallIcon(R.drawable.ic_launcher)
+                            .setContentTitle("BMW Car Launcher")
+                            .setPriority(NotificationCompat.PRIORITY_MAX)
+                            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                            .setFullScreenIntent(pi, true)
+                            .setAutoCancel(true)
+                            .setSilent(true)
+                            .setTimeoutAfter(1500L)
+                            .build()
+                        nm.notify(998, notif)
+                        mainHandler.postDelayed({
+                            try { nm.cancel(998) } catch (_: Exception) {}
+                        }, 1200L)
+                    }
+                } catch (_: Exception) {}
             }
-        } catch (_: Exception) {}
+        }, 350L)
 
         if (tempOverlayView != null && wm != null) {
             val viewToRemove = tempOverlayView
@@ -412,6 +422,25 @@ object ExternalMediaManager {
             val source = sourceNameForPackage(pkg)
 
             checkAutoReturn(pkg, title, pbState, isPlaying)
+
+            val errorMsg = ctrl.playbackState?.errorMessage?.toString() ?: ""
+            if (pkg.contains("youtube.music", ignoreCase = true)) {
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastAutoReturnTriggerTime < 5000L &&
+                    (pbState == PlaybackState.STATE_ERROR || errorMsg.contains("upgrade", ignoreCase = true))
+                ) {
+                    val app = appContext ?: WazeNotificationService.instance
+                    if (app != null) {
+                        mainHandler.post {
+                            Toast.makeText(
+                                app,
+                                "YouTube Music gratuit nu permite redarea în fundal (necesită Premium sau ReVanced).",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }
+            }
 
             if (title.isNotEmpty()) {
                 update(
