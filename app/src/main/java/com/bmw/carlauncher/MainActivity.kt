@@ -2351,37 +2351,13 @@ class MainActivity : AppCompatActivity() {
             action = { launchSelectedMediaApp(isYouTubeMusic = true) }
         ))
 
-        // 2. YouTube Live Video
+        // 2. Media Player
         options.add(MusicOption(
-            title = "YouTube Live Video",
-            desc = "Redare video circulară în Cercul Central",
+            title = "Media Player",
+            desc = "Player audio integrat",
             iconRes = R.drawable.ic_media_play,
-            action = { launchSelectedMediaApp(isYouTubeMusic = false) }
+            action = { launchMediaPlayer() }
         ))
-
-        // 3. Spotify (dacă este instalat)
-        val pm = packageManager
-        if (pm.getLaunchIntentForPackage("com.spotify.music") != null) {
-            options.add(MusicOption(
-                title = "Spotify",
-                desc = "Streaming audio extern",
-                iconRes = R.drawable.ic_gauge_music,
-                action = {
-                    musicOverlayContainer.visibility = View.GONE
-                    focusPlayPauseButton()
-                    controller?.pause()
-                    stopYouTubeWebPlayer()
-                    currentMode = CenterMode.MEDIA
-                    updateCenterModeUI()
-                    ExternalMediaManager.preferredPackage = "com.spotify.music"
-                    val launchIntent = pm.getLaunchIntentForPackage("com.spotify.music")
-                    if (launchIntent != null) {
-                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        startActivity(launchIntent)
-                    }
-                }
-            ))
-        }
 
         listMusicApps.adapter = object : BaseAdapter() {
             override fun getCount(): Int = options.size
@@ -2421,6 +2397,16 @@ class MainActivity : AppCompatActivity() {
         btnCloseMusic.isFocusable = true
         btnCloseMusic.isFocusableInTouchMode = false
         btnCloseMusic.enableInstantClickOnTouch()
+    }
+
+    private fun launchMediaPlayer() {
+        musicOverlayContainer.visibility = View.GONE
+        focusPlayPauseButton()
+        controller?.pause()
+        stopYouTubeWebPlayer()
+        currentMode = CenterMode.MEDIA
+        updateCenterModeUI()
+        Toast.makeText(this, "Media Player", Toast.LENGTH_SHORT).show()
     }
 
     private fun launchSelectedMediaApp(isYouTubeMusic: Boolean) {
