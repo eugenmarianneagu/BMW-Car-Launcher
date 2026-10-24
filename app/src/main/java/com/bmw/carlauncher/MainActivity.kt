@@ -189,7 +189,14 @@ class MainActivity : AppCompatActivity() {
         BMW, MEDIA, RADIO, MAP, ENERGY, NOTIFICATION
     }
 
+    enum class ActiveMediaSource {
+        LOCAL_PLAYER,
+        EXTERNAL_APP,
+        YOUTUBE_WEB
+    }
+
     private var currentMode = CenterMode.BMW
+    private var activeMediaSource = ActiveMediaSource.EXTERNAL_APP
     private var isNightMode = true
     enum class BrightnessMode {
         DAY,
@@ -1000,13 +1007,9 @@ class MainActivity : AppCompatActivity() {
         LocalMusicPlayer.addListener(object : LocalMusicPlayer.PlaybackListener {
             override fun onTrackChanged(track: LocalTrack?) {
                 runOnUiThread {
-                    if (track != null && currentMode == CenterMode.MEDIA && !isYouTubeWebMode) {
+                    if (activeMediaSource == ActiveMediaSource.LOCAL_PLAYER && track != null && currentMode == CenterMode.MEDIA && !isYouTubeWebMode) {
                         val bmp = LocalMusicPlayer.loadArtwork(this@MainActivity, track)
-                        if (bmp != null) {
-                            centerMediaThumbnail.setImageBitmap(bmp)
-                        } else {
-                            centerMediaThumbnail.setImageResource(R.drawable.ic_no_player_active)
-                        }
+                        centerMediaThumbnail.setImageBitmap(bmp)
                         centerMediaThumbnail.visibility = View.VISIBLE
                         centerMediaScrim.visibility = View.GONE
                         centerMediaInfoContainer.visibility = View.GONE
@@ -1017,7 +1020,10 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPlaybackStateChanged(isPlaying: Boolean) {
                 runOnUiThread {
-                    if (currentMode == CenterMode.MEDIA && !isYouTubeWebMode) {
+                    if (isPlaying) {
+                        activeMediaSource = ActiveMediaSource.LOCAL_PLAYER
+                    }
+                    if (activeMediaSource == ActiveMediaSource.LOCAL_PLAYER && currentMode == CenterMode.MEDIA && !isYouTubeWebMode) {
                         updatePlayPauseIcon(isPlaying)
                     }
                     updateNowPlayingBar()
@@ -1686,11 +1692,13 @@ class MainActivity : AppCompatActivity() {
     private fun openYouTubeFullscreen() {
         // 1. Opreste radioul intern si sesiunile audio externe
         controller?.pause()
+        LocalMusicPlayer.pause()
         try {
             ExternalMediaManager.getActiveMusicController(this)?.transportControls?.pause()
         } catch (_: Exception) {}
 
         isYouTubeWebMode = true
+        activeMediaSource = ActiveMediaSource.YOUTUBE_WEB
         isYouTubeDockedInCircle = false
         currentMode = CenterMode.MEDIA
 
@@ -1773,7 +1781,7 @@ class MainActivity : AppCompatActivity() {
         // Bottom Bar Media Controls
         btnPrevTrack.setOnClickListener {
             if (currentMode == CenterMode.MEDIA) {
-                if (isYouTubeWebMode) {
+                if (isYouTubeWebMode || activeMediaSource == ActiveMediaSource.YOUTUBE_WEB) {
                     youtubeWebView?.evaluateJavascript(
                         "(function(){ window.__bmwUserPaused = false; var v = document.querySelector('video'); if (v && v.currentTime > 5) { v.currentTime = 0; v.play(); } else { history.back(); } })();",
                         null
@@ -1781,7 +1789,7 @@ class MainActivity : AppCompatActivity() {
                     updatePlayPauseIcon(true)
                     return@setOnClickListener
                 }
-                if (LocalMusicPlayer.currentTrack != null) {
+                if (activeMediaSource == ActiveMediaSource.LOCAL_PLAYER) {
                     LocalMusicPlayer.previous()
                     updatePlayPauseIcon(true)
                     return@setOnClickListener
@@ -1820,7 +1828,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 CenterMode.MEDIA -> {
-                    if (isYouTubeWebMode) {
+                    if (isYouTubeWebMode || activeMediaSource == ActiveMediaSource.YOUTUBE_WEB) {
                         val isCurrentlyPlaying = isCurrentlyPlayingState
                         if (isCurrentlyPlaying) {
                             youtubeWebView?.evaluateJavascript(
@@ -1836,7 +1844,7 @@ class MainActivity : AppCompatActivity() {
                         }
                         return@setOnClickListener
                     }
-                    if (LocalMusicPlayer.currentTrack != null) {
+                    if (activeMediaSource == ActiveMediaSource.LOCAL_PLAYER) {
                         LocalMusicPlayer.togglePlayPause()
                         updatePlayPauseIcon(LocalMusicPlayer.isPlaying)
                         return@setOnClickListener
@@ -1915,7 +1923,7 @@ class MainActivity : AppCompatActivity() {
         }
         btnNextTrack.setOnClickListener {
             if (currentMode == CenterMode.MEDIA) {
-                if (isYouTubeWebMode) {
+                if (isYouTubeWebMode || activeMediaSource == ActiveMediaSource.YOUTUBE_WEB) {
                     val nextJs = """
                         (function() {
                             var nextBtn = document.querySelector('.ytp-next-button, [aria-label*="Next"], [aria-label*="Înainte"], [aria-label*="Următor"]');
@@ -1933,7 +1941,7 @@ class MainActivity : AppCompatActivity() {
                     updatePlayPauseIcon(true)
                     return@setOnClickListener
                 }
-                if (LocalMusicPlayer.currentTrack != null) {
+                if (activeMediaSource == ActiveMediaSource.LOCAL_PLAYER) {
                     LocalMusicPlayer.next()
                     updatePlayPauseIcon(true)
                     return@setOnClickListener
@@ -1965,7 +1973,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val openCurrentMediaApp = View.OnClickListener {
-            if (LocalMusicPlayer.currentTrack != null || (currentMode == CenterMode.MEDIA && !isYouTubeWebMode && ExternalMediaManager.currentData.packageName.isEmpty())) {
+            if (activeMediaSource == ActiveMediaSource.LOCAL_PLAYER) {
                 if (currentMode != CenterMode.MEDIA) {
                     currentMode = CenterMode.MEDIA
                     updateCenterModeUI()
@@ -1976,7 +1984,7 @@ class MainActivity : AppCompatActivity() {
             val pkg = ExternalMediaManager.currentData.packageName.ifEmpty {
                 ExternalMediaManager.preferredPackage
             }
-            if (isYouTubeWebMode) {
+            if (isYouTubeWebMode || activeMediaSource == ActiveMediaSource.YOUTUBE_WEB) {
                 if (currentMode != CenterMode.MEDIA) {
                     currentMode = CenterMode.MEDIA
                     updateCenterModeUI()
@@ -2370,23 +2378,37 @@ class MainActivity : AppCompatActivity() {
                 updatePlayPauseIcon(controller?.isPlaying == true)
             }
             CenterMode.MEDIA -> {
-                val playing = when {
-                    isYouTubeWebMode -> isYouTubeWebPlaying
-                    LocalMusicPlayer.currentTrack != null -> LocalMusicPlayer.isPlaying
-                    else -> ExternalMediaManager.currentData.isPlaying
-                }
-                updatePlayPauseIcon(playing)
-                val localTrack = LocalMusicPlayer.currentTrack
-                if (localTrack != null && !isYouTubeWebMode) {
-                    val bmp = LocalMusicPlayer.loadArtwork(this, localTrack)
-                    if (bmp != null) {
-                        centerMediaThumbnail.setImageBitmap(bmp)
-                    } else {
-                        centerMediaThumbnail.setImageResource(R.drawable.ic_no_player_active)
+                when {
+                    isYouTubeWebMode || activeMediaSource == ActiveMediaSource.YOUTUBE_WEB -> {
+                        updatePlayPauseIcon(isYouTubeWebPlaying)
                     }
-                    centerMediaThumbnail.visibility = View.VISIBLE
-                    centerMediaScrim.visibility = View.GONE
-                    centerMediaInfoContainer.visibility = View.GONE
+                    activeMediaSource == ActiveMediaSource.LOCAL_PLAYER -> {
+                        updatePlayPauseIcon(LocalMusicPlayer.isPlaying)
+                        val localTrack = LocalMusicPlayer.currentTrack
+                        if (localTrack != null) {
+                            val bmp = LocalMusicPlayer.loadArtwork(this, localTrack)
+                            centerMediaThumbnail.setImageBitmap(bmp)
+                            centerMediaThumbnail.visibility = View.VISIBLE
+                            centerMediaScrim.visibility = View.GONE
+                            centerMediaInfoContainer.visibility = View.GONE
+                        }
+                    }
+                    else -> {
+                        val extData = ExternalMediaManager.currentData
+                        updatePlayPauseIcon(extData.isPlaying)
+                        if (extData.title.isNotEmpty()) {
+                            if (extData.artBitmap != null) {
+                                centerMediaThumbnail.setImageBitmap(extData.artBitmap)
+                            } else {
+                                centerMediaThumbnail.setImageResource(R.drawable.ic_no_player_active)
+                            }
+                        } else {
+                            centerMediaThumbnail.setImageResource(R.drawable.ic_no_player_active)
+                        }
+                        centerMediaThumbnail.visibility = View.VISIBLE
+                        centerMediaScrim.visibility = View.GONE
+                        centerMediaInfoContainer.visibility = View.GONE
+                    }
                 }
             }
             else -> {
@@ -2416,12 +2438,12 @@ class MainActivity : AppCompatActivity() {
         val localTrack = LocalMusicPlayer.currentTrack
 
         val (titleText, artistText) = when {
-            isYouTubeWebMode -> {
+            isYouTubeWebMode || activeMediaSource == ActiveMediaSource.YOUTUBE_WEB -> {
                 val t = youTubeWebTitle.ifEmpty { "YouTube" }
                 val a = youTubeWebArtist.ifEmpty { "YouTube Video" }
                 Pair(t, a)
             }
-            (isLocalPlaying || (currentMode == CenterMode.MEDIA && localTrack != null)) && !isRadioPlaying -> {
+            (activeMediaSource == ActiveMediaSource.LOCAL_PLAYER || isLocalPlaying) && !isRadioPlaying -> {
                 val t = localTrack?.title ?: "Media Player"
                 val a = localTrack?.artist ?: "Muzică locală"
                 Pair(t, "$a • Media Player")
@@ -2449,6 +2471,16 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     Pair(stationName, stationGenre.ifEmpty { "Radio Live" })
                 }
+            }
+            extData.title.isNotEmpty() && activeMediaSource != ActiveMediaSource.LOCAL_PLAYER -> {
+                val t = extData.title
+                val a = extData.artist.ifEmpty { extData.sourceName.ifEmpty { "YouTube Music" } }
+                Pair(t, a)
+            }
+            localTrack != null -> {
+                val t = localTrack.title
+                val a = "${localTrack.artist} • Media Player"
+                Pair(t, a)
             }
             extData.title.isNotEmpty() -> {
                 val t = extData.title
@@ -2561,6 +2593,10 @@ class MainActivity : AppCompatActivity() {
         focusPlayPauseButton()
         controller?.pause()
         stopYouTubeWebPlayer()
+        try {
+            ExternalMediaManager.getActiveMusicController(this)?.transportControls?.pause()
+        } catch (_: Exception) {}
+        activeMediaSource = ActiveMediaSource.LOCAL_PLAYER
         currentMode = CenterMode.MEDIA
         updateCenterModeUI()
         showMediaPlayerOverlay(openCurrentPlaying = true)
@@ -2767,6 +2803,10 @@ class MainActivity : AppCompatActivity() {
                 view.setOnClickListener {
                     controller?.pause()
                     stopYouTubeWebPlayer()
+                    try {
+                        ExternalMediaManager.getActiveMusicController(this@MainActivity)?.transportControls?.pause()
+                    } catch (_: Exception) {}
+                    activeMediaSource = ActiveMediaSource.LOCAL_PLAYER
                     isYouTubeWebMode = false
                     LocalMusicPlayer.playPlaylist(this@MainActivity, playlist, position)
                     val prevMode = currentMode
@@ -2898,8 +2938,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun launchSelectedMediaApp(isYouTubeMusic: Boolean) {
-        // 1. Opreste radioul intern
+        // 1. Opreste radioul intern si playerul local
         controller?.pause()
+        LocalMusicPlayer.pause()
 
         if (!isYouTubeMusic) {
             // Deschide playerul video YouTube integrat care reda videoclipul live cropat in Cercul Central
@@ -2909,6 +2950,7 @@ class MainActivity : AppCompatActivity() {
 
         // Daca a fost selectat YouTube Music, oprim playerul video YouTube WebView
         stopYouTubeWebPlayer()
+        activeMediaSource = ActiveMediaSource.EXTERNAL_APP
 
         // 2. Comuta Cercul Central pe modul MEDIA (playerul integrat YT Music)
         currentMode = CenterMode.MEDIA
@@ -3853,6 +3895,15 @@ class MainActivity : AppCompatActivity() {
 
         ExternalMediaManager.listener = { data ->
             runOnUiThread {
+                if (data.isPlaying) {
+                    activeMediaSource = ActiveMediaSource.EXTERNAL_APP
+                    if (LocalMusicPlayer.isPlaying) {
+                        LocalMusicPlayer.pause()
+                    }
+                }
+                if (activeMediaSource == ActiveMediaSource.LOCAL_PLAYER && LocalMusicPlayer.isPlaying) {
+                    return@runOnUiThread
+                }
                 if (isYouTubeWebMode) {
                     if (data.isPlaying && data.packageName.contains("youtube.music")) {
                         stopYouTubeWebPlayer()
@@ -3860,30 +3911,32 @@ class MainActivity : AppCompatActivity() {
                         return@runOnUiThread
                     }
                 }
-                centerMediaScrim.visibility = View.GONE
-                centerMediaInfoContainer.visibility = View.GONE
-                if (data.title.isNotEmpty()) {
-                    if (data.artBitmap != null) {
-                        centerMediaThumbnail.setImageBitmap(data.artBitmap)
-                        centerMediaThumbnail.visibility = View.VISIBLE
-                    } else {
-                        centerMediaThumbnail.setImageResource(R.drawable.ic_no_player_active)
-                        centerMediaThumbnail.visibility = View.VISIBLE
-                    }
-                    if (data.isPlaying) {
-                        // Daca un player exterior ruleaza (YouTube sau YouTube Music), opreste radioul
-                        controller?.pause()
-                        if (currentMode == CenterMode.BMW) {
-                            currentMode = CenterMode.MEDIA
-                            updateCenterModeUI()
-                        } else if (currentMode == CenterMode.MEDIA) {
-                            updatePlayPauseIcon(true)
+                if (activeMediaSource != ActiveMediaSource.LOCAL_PLAYER) {
+                    centerMediaScrim.visibility = View.GONE
+                    centerMediaInfoContainer.visibility = View.GONE
+                    if (data.title.isNotEmpty()) {
+                        if (data.artBitmap != null) {
+                            centerMediaThumbnail.setImageBitmap(data.artBitmap)
+                            centerMediaThumbnail.visibility = View.VISIBLE
+                        } else {
+                            centerMediaThumbnail.setImageResource(R.drawable.ic_no_player_active)
+                            centerMediaThumbnail.visibility = View.VISIBLE
                         }
-                    } else if (currentMode == CenterMode.MEDIA) {
+                        if (data.isPlaying) {
+                            // Daca un player exterior ruleaza (YouTube sau YouTube Music), opreste radioul
+                            controller?.pause()
+                            if (currentMode == CenterMode.BMW) {
+                                currentMode = CenterMode.MEDIA
+                                updateCenterModeUI()
+                            } else if (currentMode == CenterMode.MEDIA) {
+                                updatePlayPauseIcon(true)
+                            }
+                        } else if (currentMode == CenterMode.MEDIA) {
+                            updatePlayPauseIcon(false)
+                        }
+                    } else if (!data.isPlaying && currentMode == CenterMode.MEDIA) {
                         updatePlayPauseIcon(false)
                     }
-                } else if (!data.isPlaying && currentMode == CenterMode.MEDIA) {
-                    updatePlayPauseIcon(false)
                 }
                 updateNowPlayingBar()
             }
@@ -3986,6 +4039,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
         if (intent.getBooleanExtra("FROM_YT_MUSIC_AUTO_RETURN", false)) {
+            LocalMusicPlayer.pause()
+            activeMediaSource = ActiveMediaSource.EXTERNAL_APP
             currentMode = CenterMode.MEDIA
             updateCenterModeUI()
             ExternalMediaManager.syncActiveSessions(this)

@@ -1579,7 +1579,6 @@
             app:layout_constraintBottom_toTopOf="@id/gl_media_bar_bottom"
             app:layout_constraintStart_toEndOf="@id/gl_media_next_start"
             app:layout_constraintEnd_toStartOf="@id/gl_media_next_end" />
-            app:layout_constraintEnd_toStartOf="@id/gl_media_next_end" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
