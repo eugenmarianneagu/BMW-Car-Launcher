@@ -335,6 +335,7 @@ class MainActivity : AppCompatActivity() {
     private var wasRadioPlayingBeforeVoice: Boolean = false
     private var wasYouTubePlayingBeforeVoice: Boolean = false
     private var wasExternalMediaPlayingBeforeVoice: Boolean = false
+    private var wasLocalMusicPlayingBeforeVoice: Boolean = false
 
     // Favorites Overlay UI
     private lateinit var favoritesOverlayContainer: FrameLayout
@@ -353,6 +354,22 @@ class MainActivity : AppCompatActivity() {
     private lateinit var musicOverlayContainer: FrameLayout
     private lateinit var btnCloseMusic: ImageView
     private lateinit var listMusicApps: ListView
+
+    // Media Player Overlay UI
+    private lateinit var mediaPlayerOverlayContainer: FrameLayout
+    private lateinit var btnMediaBack: ImageView
+    private lateinit var mediaHeaderTitle: TextView
+    private lateinit var btnAddPlaylist: TextView
+    private lateinit var btnScanMusic: TextView
+    private lateinit var btnMediaShuffle: FrameLayout
+    private lateinit var iconMediaShuffle: ImageView
+    private lateinit var btnMediaRepeat: FrameLayout
+    private lateinit var iconMediaRepeat: ImageView
+    private lateinit var btnCloseMediaPlayer: ImageView
+    private lateinit var listMediaPlaylists: ListView
+    private lateinit var listMediaTracks: ListView
+    private lateinit var mediaEmptyText: TextView
+    private var selectedPlaylist: LocalPlaylist? = null
 
     // All Apps Overlay UI
     private lateinit var appsOverlayContainer: FrameLayout
@@ -975,6 +992,93 @@ class MainActivity : AppCompatActivity() {
         musicOverlayContainer.setOnClickListener {
             musicOverlayContainer.visibility = View.GONE
             focusPlayPauseButton()
+        }
+
+        // Inițializare Media Player & Music Manager
+        LocalMusicManager.initialize(this)
+        LocalMusicPlayer.initialize(this)
+        LocalMusicPlayer.addListener(object : LocalMusicPlayer.PlaybackListener {
+            override fun onTrackChanged(track: LocalTrack?) {
+                runOnUiThread {
+                    if (track != null && currentMode == CenterMode.MEDIA && !isYouTubeWebMode) {
+                        val bmp = LocalMusicPlayer.loadArtwork(this@MainActivity, track)
+                        if (bmp != null) {
+                            centerMediaThumbnail.setImageBitmap(bmp)
+                        } else {
+                            centerMediaThumbnail.setImageResource(R.drawable.ic_no_player_active)
+                        }
+                        centerMediaThumbnail.visibility = View.VISIBLE
+                    }
+                    updateNowPlayingBar()
+                }
+            }
+
+            override fun onPlaybackStateChanged(isPlaying: Boolean) {
+                runOnUiThread {
+                    if (currentMode == CenterMode.MEDIA && !isYouTubeWebMode) {
+                        updatePlayPauseIcon(isPlaying)
+                    }
+                    updateNowPlayingBar()
+                }
+            }
+        })
+
+        // Inițializare Fereastră Media Player
+        mediaPlayerOverlayContainer = findViewById(R.id.media_player_overlay_container)
+        btnMediaBack = findViewById(R.id.btn_media_back)
+        mediaHeaderTitle = findViewById(R.id.media_header_title)
+        btnAddPlaylist = findViewById(R.id.btn_add_playlist)
+        btnScanMusic = findViewById(R.id.btn_scan_music)
+        btnMediaShuffle = findViewById(R.id.btn_media_shuffle)
+        iconMediaShuffle = findViewById(R.id.icon_media_shuffle)
+        btnMediaRepeat = findViewById(R.id.btn_media_repeat)
+        iconMediaRepeat = findViewById(R.id.icon_media_repeat)
+        btnCloseMediaPlayer = findViewById(R.id.btn_close_media_player)
+        listMediaPlaylists = findViewById(R.id.list_media_playlists)
+        listMediaTracks = findViewById(R.id.list_media_tracks)
+        mediaEmptyText = findViewById(R.id.media_empty_text)
+
+        listMediaPlaylists.itemsCanFocus = true
+        listMediaTracks.itemsCanFocus = true
+
+        btnCloseMediaPlayer.setOnClickListener {
+            mediaPlayerOverlayContainer.visibility = View.GONE
+            focusPlayPauseButton()
+        }
+        mediaPlayerOverlayContainer.setOnClickListener {
+            mediaPlayerOverlayContainer.visibility = View.GONE
+            focusPlayPauseButton()
+        }
+        btnMediaBack.setOnClickListener {
+            showMediaPlaylistsView()
+        }
+        btnAddPlaylist.setOnClickListener {
+            showCreatePlaylistDialog()
+        }
+        btnScanMusic.setOnClickListener {
+            Toast.makeText(this, "Scanare fisiere audio...", Toast.LENGTH_SHORT).show()
+            kotlin.concurrent.thread {
+                LocalMusicManager.scanDeviceTracks(this)
+                runOnUiThread {
+                    refreshMediaOverlayUI()
+                    Toast.makeText(this, "Scanare completă: ${LocalMusicManager.cachedTracks.size} piese", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        btnMediaShuffle.setOnClickListener {
+            val isShuffle = LocalMusicPlayer.toggleShuffle()
+            updateShuffleIcon(isShuffle)
+            Toast.makeText(this, if (isShuffle) "Shuffle: ACTIVAT" else "Shuffle: DEZACTIVAT", Toast.LENGTH_SHORT).show()
+        }
+        btnMediaRepeat.setOnClickListener {
+            val nextRepeat = LocalMusicPlayer.cycleRepeatMode()
+            updateRepeatIcon(nextRepeat)
+            val msg = when (nextRepeat) {
+                androidx.media3.common.Player.REPEAT_MODE_ALL -> "Repetare: TOATE"
+                androidx.media3.common.Player.REPEAT_MODE_ONE -> "Repetare: O PIESĂ"
+                else -> "Repetare: OPRIT"
+            }
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
 
         // Inițializare Fereastră Toate Aplicațiile
@@ -1675,6 +1779,11 @@ class MainActivity : AppCompatActivity() {
                     updatePlayPauseIcon(true)
                     return@setOnClickListener
                 }
+                if (LocalMusicPlayer.currentTrack != null) {
+                    LocalMusicPlayer.previous()
+                    updatePlayPauseIcon(true)
+                    return@setOnClickListener
+                }
                 val mc = ExternalMediaManager.getActiveMusicController(this)
                 if (mc != null) {
                     mc.transportControls.skipToPrevious()
@@ -1699,6 +1808,7 @@ class MainActivity : AppCompatActivity() {
                         if (c.isPlaying) {
                             c.pause()
                         } else {
+                            LocalMusicPlayer.pause()
                             stopYouTubeWebPlayer()
                             try {
                                 ExternalMediaManager.getActiveMusicController(this)?.transportControls?.pause()
@@ -1722,6 +1832,11 @@ class MainActivity : AppCompatActivity() {
                             isYouTubeWebPlaying = true
                             updatePlayPauseIcon(true)
                         }
+                        return@setOnClickListener
+                    }
+                    if (LocalMusicPlayer.currentTrack != null) {
+                        LocalMusicPlayer.togglePlayPause()
+                        updatePlayPauseIcon(LocalMusicPlayer.isPlaying)
                         return@setOnClickListener
                     }
                     val mc = ExternalMediaManager.getActiveMusicController(this)
@@ -1767,7 +1882,10 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 else -> {
-                    if (controller?.isPlaying == true) {
+                    if (LocalMusicPlayer.isPlaying) {
+                        LocalMusicPlayer.pause()
+                        updatePlayPauseIcon(false)
+                    } else if (controller?.isPlaying == true) {
                         controller?.pause()
                     } else if (isYouTubeWebMode && isYouTubeWebPlaying) {
                         youtubeWebView?.evaluateJavascript("window.__bmwUserPaused = true; var v = document.querySelector('video'); if (v) v.pause();", null)
@@ -1813,6 +1931,11 @@ class MainActivity : AppCompatActivity() {
                     updatePlayPauseIcon(true)
                     return@setOnClickListener
                 }
+                if (LocalMusicPlayer.currentTrack != null) {
+                    LocalMusicPlayer.next()
+                    updatePlayPauseIcon(true)
+                    return@setOnClickListener
+                }
                 val mc = ExternalMediaManager.getActiveMusicController(this)
                 if (mc != null) {
                     mc.transportControls.skipToNext()
@@ -1840,6 +1963,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         val openCurrentMediaApp = View.OnClickListener {
+            if (LocalMusicPlayer.currentTrack != null || (currentMode == CenterMode.MEDIA && !isYouTubeWebMode && ExternalMediaManager.currentData.packageName.isEmpty())) {
+                if (currentMode != CenterMode.MEDIA) {
+                    currentMode = CenterMode.MEDIA
+                    updateCenterModeUI()
+                }
+                showMediaPlayerOverlay(openCurrentPlaying = true)
+                return@OnClickListener
+            }
             val pkg = ExternalMediaManager.currentData.packageName.ifEmpty {
                 ExternalMediaManager.preferredPackage
             }
@@ -2237,12 +2368,27 @@ class MainActivity : AppCompatActivity() {
                 updatePlayPauseIcon(controller?.isPlaying == true)
             }
             CenterMode.MEDIA -> {
-                val playing = if (isYouTubeWebMode) isYouTubeWebPlaying else ExternalMediaManager.currentData.isPlaying
+                val playing = when {
+                    isYouTubeWebMode -> isYouTubeWebPlaying
+                    LocalMusicPlayer.currentTrack != null -> LocalMusicPlayer.isPlaying
+                    else -> ExternalMediaManager.currentData.isPlaying
+                }
                 updatePlayPauseIcon(playing)
+                val localTrack = LocalMusicPlayer.currentTrack
+                if (localTrack != null && !isYouTubeWebMode) {
+                    val bmp = LocalMusicPlayer.loadArtwork(this, localTrack)
+                    if (bmp != null) {
+                        centerMediaThumbnail.setImageBitmap(bmp)
+                    } else {
+                        centerMediaThumbnail.setImageResource(R.drawable.ic_no_player_active)
+                    }
+                    centerMediaThumbnail.visibility = View.VISIBLE
+                }
             }
             else -> {
                 val isAnyPlaying = (controller?.isPlaying == true) ||
                         (isYouTubeWebMode && isYouTubeWebPlaying) ||
+                        LocalMusicPlayer.isPlaying ||
                         ExternalMediaManager.currentData.isPlaying
                 updatePlayPauseIcon(isAnyPlaying)
             }
@@ -2262,12 +2408,19 @@ class MainActivity : AppCompatActivity() {
 
         val extData = ExternalMediaManager.currentData
         val isRadioPlaying = (controller?.isPlaying == true)
+        val isLocalPlaying = LocalMusicPlayer.isPlaying
+        val localTrack = LocalMusicPlayer.currentTrack
 
         val (titleText, artistText) = when {
             isYouTubeWebMode -> {
                 val t = youTubeWebTitle.ifEmpty { "YouTube" }
                 val a = youTubeWebArtist.ifEmpty { "YouTube Video" }
                 Pair(t, a)
+            }
+            (isLocalPlaying || (currentMode == CenterMode.MEDIA && localTrack != null)) && !isRadioPlaying -> {
+                val t = localTrack?.title ?: "Media Player"
+                val a = localTrack?.artist ?: "Muzică locală"
+                Pair(t, "$a • Media Player")
             }
             (extData.isPlaying || (currentMode == CenterMode.MEDIA && extData.title.isNotEmpty())) && !isRadioPlaying -> {
                 val t = extData.title.ifEmpty { "YouTube Music" }
@@ -2406,7 +2559,326 @@ class MainActivity : AppCompatActivity() {
         stopYouTubeWebPlayer()
         currentMode = CenterMode.MEDIA
         updateCenterModeUI()
-        Toast.makeText(this, "Media Player", Toast.LENGTH_SHORT).show()
+        showMediaPlayerOverlay(openCurrentPlaying = true)
+    }
+
+    fun showMediaPlayerOverlay(openCurrentPlaying: Boolean = true) {
+        dismissAllOverlays()
+        mediaPlayerOverlayContainer.visibility = View.VISIBLE
+        btnCloseMediaPlayer.isFocusable = true
+        btnCloseMediaPlayer.isFocusableInTouchMode = false
+        btnCloseMediaPlayer.enableInstantClickOnTouch()
+
+        val activePl = LocalMusicPlayer.currentPlaylist
+        if (openCurrentPlaying && activePl != null && LocalMusicPlayer.currentTrack != null) {
+            showMediaTracksView(activePl)
+        } else {
+            showMediaPlaylistsView()
+        }
+    }
+
+    private fun showMediaPlaylistsView() {
+        selectedPlaylist = null
+        btnMediaBack.visibility = View.GONE
+        mediaHeaderTitle.text = "🎵 MEDIA PLAYER"
+        btnAddPlaylist.visibility = View.VISIBLE
+        btnScanMusic.visibility = View.VISIBLE
+        btnMediaShuffle.visibility = View.GONE
+        btnMediaRepeat.visibility = View.GONE
+
+        listMediaPlaylists.visibility = View.VISIBLE
+        listMediaTracks.visibility = View.GONE
+
+        val playlists = LocalMusicManager.getAllPlaylists()
+        if (playlists.isEmpty() && LocalMusicManager.cachedTracks.isEmpty()) {
+            mediaEmptyText.visibility = View.VISIBLE
+        } else {
+            mediaEmptyText.visibility = View.GONE
+        }
+
+        listMediaPlaylists.adapter = object : BaseAdapter() {
+            override fun getCount(): Int = playlists.size
+            override fun getItem(position: Int): Any = playlists[position]
+            override fun getItemId(position: Int): Long = position.toLong()
+
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+                val view = convertView ?: layoutInflater.inflate(R.layout.item_media_playlist, parent, false)
+                val pl = playlists[position]
+
+                val iconView = view.findViewById<ImageView>(R.id.item_playlist_icon)
+                val nameView = view.findViewById<TextView>(R.id.item_playlist_name)
+                val subView = view.findViewById<TextView>(R.id.item_playlist_subtitle)
+                val btnDelete = view.findViewById<FrameLayout>(R.id.btn_delete_playlist)
+
+                nameView.text = pl.name
+
+                val trackCount = LocalMusicManager.getTracksForPlaylist(pl).size
+                subView.text = when {
+                    pl.id == LocalMusicManager.ID_ALL_SONGS -> "$trackCount piese • Toate"
+                    pl.id == LocalMusicManager.ID_FAVORITES -> "$trackCount piese favorite"
+                    pl.isFolder -> "$trackCount piese • Folder"
+                    else -> "$trackCount piese • Personal"
+                }
+
+                when {
+                    pl.id == LocalMusicManager.ID_ALL_SONGS -> {
+                        iconView.setImageResource(R.drawable.ic_playlist_music)
+                        iconView.setColorFilter(ContextCompat.getColor(this@MainActivity, R.color.bmw_amber))
+                    }
+                    pl.id == LocalMusicManager.ID_FAVORITES -> {
+                        iconView.setImageResource(R.drawable.ic_star_filled)
+                        iconView.setColorFilter(Color.parseColor("#FFB300"))
+                    }
+                    pl.isFolder -> {
+                        iconView.setImageResource(R.drawable.ic_folder)
+                        iconView.setColorFilter(Color.parseColor("#FFB300"))
+                    }
+                    else -> {
+                        iconView.setImageResource(R.drawable.ic_playlist_music)
+                        iconView.setColorFilter(Color.WHITE)
+                    }
+                }
+
+                if (!pl.isSystem && !pl.isFolder) {
+                    btnDelete.visibility = View.VISIBLE
+                    btnDelete.isFocusable = true
+                    btnDelete.isFocusableInTouchMode = false
+                    btnDelete.enableInstantClickOnTouch()
+                    btnDelete.setOnClickListener {
+                        showDeletePlaylistDialog(pl)
+                    }
+                } else {
+                    btnDelete.visibility = View.GONE
+                }
+
+                view.isFocusable = true
+                view.isFocusableInTouchMode = false
+                view.enableInstantClickOnTouch()
+                view.setOnClickListener {
+                    showMediaTracksView(pl)
+                }
+
+                return view
+            }
+        }
+    }
+
+    private fun showMediaTracksView(playlist: LocalPlaylist) {
+        selectedPlaylist = playlist
+        btnMediaBack.visibility = View.VISIBLE
+        btnMediaBack.isFocusable = true
+        btnMediaBack.isFocusableInTouchMode = false
+        btnMediaBack.enableInstantClickOnTouch()
+
+        mediaHeaderTitle.text = playlist.name
+        btnAddPlaylist.visibility = View.GONE
+        btnScanMusic.visibility = View.GONE
+        btnMediaShuffle.visibility = View.VISIBLE
+        btnMediaRepeat.visibility = View.VISIBLE
+
+        updateShuffleIcon(LocalMusicPlayer.isShuffleEnabled)
+        updateRepeatIcon(LocalMusicPlayer.repeatMode)
+
+        listMediaPlaylists.visibility = View.GONE
+        listMediaTracks.visibility = View.VISIBLE
+
+        val tracks = LocalMusicManager.getTracksForPlaylist(playlist)
+        if (tracks.isEmpty()) {
+            mediaEmptyText.text = "Acest playlist este gol."
+            mediaEmptyText.visibility = View.VISIBLE
+        } else {
+            mediaEmptyText.visibility = View.GONE
+        }
+
+        val adapter = object : BaseAdapter() {
+            override fun getCount(): Int = tracks.size
+            override fun getItem(position: Int): Any = tracks[position]
+            override fun getItemId(position: Int): Long = position.toLong()
+
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+                val view = convertView ?: layoutInflater.inflate(R.layout.item_media_track, parent, false)
+                val track = tracks[position]
+
+                val titleView = view.findViewById<TextView>(R.id.item_track_title)
+                val artistDurView = view.findViewById<TextView>(R.id.item_track_artist_duration)
+                val playStateIcon = view.findViewById<ImageView>(R.id.item_track_play_state)
+                val btnFav = view.findViewById<FrameLayout>(R.id.btn_track_favorite)
+                val favIcon = view.findViewById<ImageView>(R.id.item_track_fav_icon)
+                val btnAction = view.findViewById<FrameLayout>(R.id.btn_track_playlist_action)
+                val actionIcon = view.findViewById<ImageView>(R.id.item_track_playlist_action_icon)
+
+                titleView.text = track.title
+                artistDurView.text = "${track.artist} • ${track.formatDuration()}"
+
+                val isThisPlaying = LocalMusicPlayer.currentTrack?.path == track.path
+                if (isThisPlaying) {
+                    titleView.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.bmw_amber))
+                    playStateIcon.setImageResource(if (LocalMusicPlayer.isPlaying) R.drawable.ic_media_pause else R.drawable.ic_media_play)
+                    playStateIcon.setColorFilter(ContextCompat.getColor(this@MainActivity, R.color.bmw_amber))
+                } else {
+                    titleView.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.bmw_white))
+                    playStateIcon.setImageResource(R.drawable.ic_media_play)
+                    playStateIcon.setColorFilter(Color.parseColor("#88FFFFFF"))
+                }
+
+                val isFav = LocalMusicManager.isFavorite(track)
+                favIcon.setImageResource(if (isFav) R.drawable.ic_star_filled else R.drawable.ic_star_border)
+                favIcon.setColorFilter(if (isFav) Color.parseColor("#FFB300") else Color.parseColor("#88FFFFFF"))
+
+                btnFav.isFocusable = true
+                btnFav.isFocusableInTouchMode = false
+                btnFav.enableInstantClickOnTouch()
+                btnFav.setOnClickListener {
+                    val newFav = LocalMusicManager.toggleFavorite(this@MainActivity, track)
+                    favIcon.setImageResource(if (newFav) R.drawable.ic_star_filled else R.drawable.ic_star_border)
+                    favIcon.setColorFilter(if (newFav) Color.parseColor("#FFB300") else Color.parseColor("#88FFFFFF"))
+                    Toast.makeText(this@MainActivity, if (newFav) "Adăugat la Favorite ⭐" else "Șters din Favorite", Toast.LENGTH_SHORT).show()
+                }
+
+                val isCustomPl = !playlist.isSystem && !playlist.isFolder
+                if (isCustomPl) {
+                    actionIcon.setImageResource(R.drawable.ic_delete)
+                    actionIcon.setColorFilter(Color.parseColor("#FF5555"))
+                } else {
+                    actionIcon.setImageResource(R.drawable.ic_add)
+                    actionIcon.setColorFilter(Color.WHITE)
+                }
+
+                btnAction.isFocusable = true
+                btnAction.isFocusableInTouchMode = false
+                btnAction.enableInstantClickOnTouch()
+                btnAction.setOnClickListener {
+                    if (isCustomPl) {
+                        LocalMusicManager.removeTrackFromPlaylist(this@MainActivity, playlist.id, track)
+                        Toast.makeText(this@MainActivity, "Piesă eliminată din playlist", Toast.LENGTH_SHORT).show()
+                        showMediaTracksView(playlist)
+                    } else {
+                        showAddToPlaylistDialog(track)
+                    }
+                }
+
+                view.isFocusable = true
+                view.isFocusableInTouchMode = false
+                view.enableInstantClickOnTouch()
+                view.setOnClickListener {
+                    controller?.pause()
+                    stopYouTubeWebPlayer()
+                    LocalMusicPlayer.playPlaylist(this@MainActivity, playlist, position)
+                    currentMode = CenterMode.MEDIA
+                    updateCenterModeUI()
+                    notifyDataSetChanged()
+                }
+
+                return view
+            }
+        }
+
+        listMediaTracks.adapter = adapter
+
+        val playingIdx = tracks.indexOfFirst { it.path == LocalMusicPlayer.currentTrack?.path }
+        if (playingIdx >= 0) {
+            listMediaTracks.post {
+                focusAndCenterListItem(listMediaTracks, playingIdx)
+            }
+        }
+    }
+
+    private fun refreshMediaOverlayUI() {
+        val selPl = selectedPlaylist
+        if (selPl != null && listMediaTracks.visibility == View.VISIBLE) {
+            showMediaTracksView(selPl)
+        } else {
+            showMediaPlaylistsView()
+        }
+    }
+
+    private fun updateShuffleIcon(isShuffle: Boolean) {
+        if (::iconMediaShuffle.isInitialized) {
+            iconMediaShuffle.setColorFilter(if (isShuffle) ContextCompat.getColor(this, R.color.bmw_amber) else Color.parseColor("#88FFFFFF"))
+        }
+    }
+
+    private fun updateRepeatIcon(repeatMode: Int) {
+        if (!::iconMediaRepeat.isInitialized) return
+        when (repeatMode) {
+            androidx.media3.common.Player.REPEAT_MODE_ALL -> {
+                iconMediaRepeat.setImageResource(R.drawable.ic_repeat)
+                iconMediaRepeat.setColorFilter(ContextCompat.getColor(this, R.color.bmw_amber))
+            }
+            androidx.media3.common.Player.REPEAT_MODE_ONE -> {
+                iconMediaRepeat.setImageResource(R.drawable.ic_repeat_one)
+                iconMediaRepeat.setColorFilter(ContextCompat.getColor(this, R.color.bmw_amber))
+            }
+            else -> {
+                iconMediaRepeat.setImageResource(R.drawable.ic_repeat)
+                iconMediaRepeat.setColorFilter(Color.parseColor("#88FFFFFF"))
+            }
+        }
+    }
+
+    private fun showCreatePlaylistDialog() {
+        val input = EditText(this).apply {
+            hint = "Nume playlist (ex: Drum lung, Rock...)"
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.parseColor("#88FFFFFF"))
+            setPadding(40, 30, 40, 30)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("PLAYLIST NOU")
+            .setView(input)
+            .setPositiveButton("CREEAZĂ") { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isNotEmpty()) {
+                    val pl = LocalMusicManager.createCustomPlaylist(this, name)
+                    Toast.makeText(this, "Playlist '${pl.name}' creat!", Toast.LENGTH_SHORT).show()
+                    showMediaPlaylistsView()
+                }
+            }
+            .setNegativeButton("ANULEAZĂ", null)
+            .show()
+    }
+
+    private fun showDeletePlaylistDialog(playlist: LocalPlaylist) {
+        AlertDialog.Builder(this)
+            .setTitle("ȘTERGERE PLAYLIST")
+            .setMessage("Sigur doriți să ștergeți playlistul '${playlist.name}'?")
+            .setPositiveButton("ȘTERGE") { _, _ ->
+                LocalMusicManager.deleteCustomPlaylist(this, playlist.id)
+                Toast.makeText(this, "Playlist șters!", Toast.LENGTH_SHORT).show()
+                showMediaPlaylistsView()
+            }
+            .setNegativeButton("ANULEAZĂ", null)
+            .show()
+    }
+
+    private fun showAddToPlaylistDialog(track: LocalTrack) {
+        val customPls = LocalMusicManager.customPlaylists
+        if (customPls.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle("ADĂUGARE ÎN PLAYLIST")
+                .setMessage("Nu ai creat încă niciun playlist personal. Vrei să creezi unul acum?")
+                .setPositiveButton("CREEAZĂ") { _, _ ->
+                    showCreatePlaylistDialog()
+                }
+                .setNegativeButton("ANULEAZĂ", null)
+                .show()
+            return
+        }
+
+        val names = customPls.map { it.name }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("ADĂUGARE ÎN PLAYLIST")
+            .setItems(names) { _, which ->
+                val targetPl = customPls[which]
+                val added = LocalMusicManager.addTrackToPlaylist(this, targetPl.id, track)
+                if (added) {
+                    Toast.makeText(this, "Adăugat în '${targetPl.name}'!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Piesa există deja în '${targetPl.name}'", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("ANULEAZĂ", null)
+            .show()
     }
 
     private fun launchSelectedMediaApp(isYouTubeMusic: Boolean) {
@@ -3945,18 +4417,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun pauseOtherPlayersForVoiceMessage() {
-        if (!wasRadioPlayingBeforeVoice && !wasYouTubePlayingBeforeVoice && !wasExternalMediaPlayingBeforeVoice) {
+        if (!wasRadioPlayingBeforeVoice && !wasYouTubePlayingBeforeVoice && !wasExternalMediaPlayingBeforeVoice && !wasLocalMusicPlayingBeforeVoice) {
             wasRadioPlayingBeforeVoice = controller?.isPlaying == true
             wasYouTubePlayingBeforeVoice = isYouTubeWebMode && isYouTubeWebPlaying
+            wasLocalMusicPlayingBeforeVoice = LocalMusicPlayer.isPlaying
             val extCtrl = ExternalMediaManager.getActiveMusicController(this)
             wasExternalMediaPlayingBeforeVoice = ExternalMediaManager.currentData.isPlaying ||
                     (extCtrl?.playbackState?.state == PlaybackState.STATE_PLAYING)
-            Log.d("MainActivity", "pauseOtherPlayers: radio=$wasRadioPlayingBeforeVoice, yt=$wasYouTubePlayingBeforeVoice, ext=$wasExternalMediaPlayingBeforeVoice")
+            Log.d("MainActivity", "pauseOtherPlayers: radio=$wasRadioPlayingBeforeVoice, yt=$wasYouTubePlayingBeforeVoice, local=$wasLocalMusicPlayingBeforeVoice, ext=$wasExternalMediaPlayingBeforeVoice")
         }
 
         if (wasRadioPlayingBeforeVoice) {
             controller?.pause()
             Log.d("MainActivity", "Radio intern oprit temporar pentru mesaj vocal/audio")
+        }
+
+        if (wasLocalMusicPlayingBeforeVoice) {
+            LocalMusicPlayer.pause()
+            Log.d("MainActivity", "Media Player local oprit temporar pentru mesaj vocal/audio")
         }
 
         if (wasYouTubePlayingBeforeVoice) {
@@ -3984,7 +4462,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun resumeOtherPlayersAfterVoiceMessage() {
-        Log.d("MainActivity", "resumeOtherPlayers: radio=$wasRadioPlayingBeforeVoice, yt=$wasYouTubePlayingBeforeVoice, ext=$wasExternalMediaPlayingBeforeVoice")
+        Log.d("MainActivity", "resumeOtherPlayers: radio=$wasRadioPlayingBeforeVoice, yt=$wasYouTubePlayingBeforeVoice, local=$wasLocalMusicPlayingBeforeVoice, ext=$wasExternalMediaPlayingBeforeVoice")
         if (wasRadioPlayingBeforeVoice) {
             wasRadioPlayingBeforeVoice = false
             if (controller != null) {
@@ -3996,6 +4474,11 @@ class MainActivity : AppCompatActivity() {
                 startService(serviceIntent)
             }
             Log.d("MainActivity", "Radio intern reluat dupa mesaj vocal")
+        } else if (wasLocalMusicPlayingBeforeVoice) {
+            wasLocalMusicPlayingBeforeVoice = false
+            LocalMusicPlayer.play()
+            updatePlayPauseIcon(true)
+            Log.d("MainActivity", "Media Player local reluat dupa mesaj vocal")
         } else if (wasYouTubePlayingBeforeVoice) {
             wasYouTubePlayingBeforeVoice = false
             youtubeWebView?.evaluateJavascript("window.__bmwUserPaused = false; var v = document.querySelector('video'); if (v) v.play();", null)
@@ -4281,6 +4764,7 @@ class MainActivity : AppCompatActivity() {
         if (::callOverlayContainer.isInitialized && callOverlayContainer.visibility == View.VISIBLE) return callOverlayContainer
         if (::favoritesOverlayContainer.isInitialized && favoritesOverlayContainer.visibility == View.VISIBLE) return favoritesOverlayContainer
         if (::radioOverlayContainer.isInitialized && radioOverlayContainer.visibility == View.VISIBLE) return radioOverlayContainer
+        if (::mediaPlayerOverlayContainer.isInitialized && mediaPlayerOverlayContainer.visibility == View.VISIBLE) return mediaPlayerOverlayContainer
         if (::musicOverlayContainer.isInitialized && musicOverlayContainer.visibility == View.VISIBLE) return musicOverlayContainer
         if (::appsOverlayContainer.isInitialized && appsOverlayContainer.visibility == View.VISIBLE) return appsOverlayContainer
         if (::settingsOverlayContainer.isInitialized && settingsOverlayContainer.visibility == View.VISIBLE) return settingsOverlayContainer
@@ -4337,6 +4821,26 @@ class MainActivity : AppCompatActivity() {
                 if (::listRadioStations.isInitialized && listRadioStations.visibility == View.VISIBLE) {
                     for (i in 0 until listRadioStations.childCount) {
                         val child = listRadioStations.getChildAt(i)
+                        if (child.visibility == View.VISIBLE) views.add(child)
+                    }
+                }
+            }
+            mediaPlayerOverlayContainer -> {
+                if (::listMediaTracks.isInitialized && listMediaTracks.visibility == View.VISIBLE) {
+                    if (::btnMediaBack.isInitialized && btnMediaBack.visibility == View.VISIBLE) views.add(btnMediaBack)
+                    if (::btnMediaShuffle.isInitialized && btnMediaShuffle.visibility == View.VISIBLE) views.add(btnMediaShuffle)
+                    if (::btnMediaRepeat.isInitialized && btnMediaRepeat.visibility == View.VISIBLE) views.add(btnMediaRepeat)
+                    if (::btnCloseMediaPlayer.isInitialized && btnCloseMediaPlayer.visibility == View.VISIBLE) views.add(btnCloseMediaPlayer)
+                    for (i in 0 until listMediaTracks.childCount) {
+                        val child = listMediaTracks.getChildAt(i)
+                        if (child.visibility == View.VISIBLE) views.add(child)
+                    }
+                } else if (::listMediaPlaylists.isInitialized) {
+                    if (::btnAddPlaylist.isInitialized && btnAddPlaylist.visibility == View.VISIBLE) views.add(btnAddPlaylist)
+                    if (::btnScanMusic.isInitialized && btnScanMusic.visibility == View.VISIBLE) views.add(btnScanMusic)
+                    if (::btnCloseMediaPlayer.isInitialized && btnCloseMediaPlayer.visibility == View.VISIBLE) views.add(btnCloseMediaPlayer)
+                    for (i in 0 until listMediaPlaylists.childCount) {
+                        val child = listMediaPlaylists.getChildAt(i)
                         if (child.visibility == View.VISIBLE) views.add(child)
                     }
                 }
@@ -4413,6 +4917,7 @@ class MainActivity : AppCompatActivity() {
         val listView: AdapterView<*>? = when (overlay) {
             favoritesOverlayContainer -> if (::listFavoriteContacts.isInitialized && listFavoriteContacts.visibility == View.VISIBLE) listFavoriteContacts else null
             radioOverlayContainer -> if (::listRadioStations.isInitialized && listRadioStations.visibility == View.VISIBLE) listRadioStations else null
+            mediaPlayerOverlayContainer -> if (::listMediaTracks.isInitialized && listMediaTracks.visibility == View.VISIBLE) listMediaTracks else (if (::listMediaPlaylists.isInitialized && listMediaPlaylists.visibility == View.VISIBLE) listMediaPlaylists else null)
             musicOverlayContainer -> if (::listMusicApps.isInitialized && listMusicApps.visibility == View.VISIBLE) listMusicApps else null
             appsOverlayContainer -> if (::gridAllApps.isInitialized && gridAllApps.visibility == View.VISIBLE) gridAllApps else null
             else -> null
@@ -4430,6 +4935,22 @@ class MainActivity : AppCompatActivity() {
                     if (::btnCloseRadio.isInitialized && btnCloseRadio.visibility == View.VISIBLE) btnCloseRadio else null,
                     if (::btnAddStation.isInitialized && btnAddStation.visibility == View.VISIBLE) btnAddStation else null
                 )
+                mediaPlayerOverlayContainer -> {
+                    if (::listMediaTracks.isInitialized && listMediaTracks.visibility == View.VISIBLE) {
+                        listOfNotNull(
+                            if (::btnMediaBack.isInitialized && btnMediaBack.visibility == View.VISIBLE) btnMediaBack else null,
+                            if (::btnMediaShuffle.isInitialized && btnMediaShuffle.visibility == View.VISIBLE) btnMediaShuffle else null,
+                            if (::btnMediaRepeat.isInitialized && btnMediaRepeat.visibility == View.VISIBLE) btnMediaRepeat else null,
+                            if (::btnCloseMediaPlayer.isInitialized && btnCloseMediaPlayer.visibility == View.VISIBLE) btnCloseMediaPlayer else null
+                        )
+                    } else {
+                        listOfNotNull(
+                            if (::btnAddPlaylist.isInitialized && btnAddPlaylist.visibility == View.VISIBLE) btnAddPlaylist else null,
+                            if (::btnScanMusic.isInitialized && btnScanMusic.visibility == View.VISIBLE) btnScanMusic else null,
+                            if (::btnCloseMediaPlayer.isInitialized && btnCloseMediaPlayer.visibility == View.VISIBLE) btnCloseMediaPlayer else null
+                        )
+                    }
+                }
                 musicOverlayContainer -> listOfNotNull(
                     if (::btnCloseMusic.isInitialized && btnCloseMusic.visibility == View.VISIBLE) btnCloseMusic else null
                 )
@@ -4537,6 +5058,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onBackPressed() {
+        if (::mediaPlayerOverlayContainer.isInitialized && mediaPlayerOverlayContainer.visibility == View.VISIBLE) {
+            if (::listMediaTracks.isInitialized && listMediaTracks.visibility == View.VISIBLE) {
+                showMediaPlaylistsView()
+            } else {
+                mediaPlayerOverlayContainer.visibility = View.GONE
+            }
+            return
+        }
         if (getActiveSecondaryOverlay() != null) {
             dismissAllOverlays()
             return
@@ -4739,6 +5268,9 @@ class MainActivity : AppCompatActivity() {
         }
         if (::radioOverlayContainer.isInitialized && radioOverlayContainer.visibility == View.VISIBLE) {
             radioOverlayContainer.visibility = View.GONE
+        }
+        if (::mediaPlayerOverlayContainer.isInitialized && mediaPlayerOverlayContainer.visibility == View.VISIBLE) {
+            mediaPlayerOverlayContainer.visibility = View.GONE
         }
         if (::musicOverlayContainer.isInitialized && musicOverlayContainer.visibility == View.VISIBLE) {
             musicOverlayContainer.visibility = View.GONE
